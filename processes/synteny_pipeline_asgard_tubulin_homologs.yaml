@@ -10,9 +10,11 @@ run_id: tubulin_homologs_synteny
 
 
 # mode selection:
-from_existing_dir: True
+from_existing_dir: false
 parent_dir: /home/anirudh/asgard_pipeline/database/protein_sets/ftsz/Asgard_tubulin_homologs
 
+
+from_database: True
 
 
 
@@ -21,9 +23,13 @@ gene_neighborhood_protein_sets:
     - FtsZ1
     - FtsZ2
     - CetZ
+    - SepF
 
 synteny_plot_genomes:
-    - 
+    - GCA_041410205.1_ASM4141020v1_genomic
+    - GCA_008000775.2_ASM800077v2_genomic
+    - GCA_001940665.2_ASM194066v2_genomic
+
 
 
 
