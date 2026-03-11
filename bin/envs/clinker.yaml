@@ -1,0 +1,10 @@
+name: clinker
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - clinker-py
+  - pandas
+prefix: /root/miniconda3/envs/clinker

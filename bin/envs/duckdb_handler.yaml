@@ -8,4 +8,5 @@ dependencies:
   - fastparquet
   - pyarrow
   - duckdb
+  - biopython
 prefix: /root/miniconda3/envs/duckdb_handler

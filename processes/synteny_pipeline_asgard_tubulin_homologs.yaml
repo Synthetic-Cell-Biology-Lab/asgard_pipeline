@@ -8,6 +8,23 @@ pipeline: synteny_pipeline
 
 run_id: tubulin_homologs_synteny
 
+protein_name: tubulin
+
+# Base directory for the pipeline
+base_dir: "/home/anirudh/asgard_pipeline"
+
+# Conda environment directory
+env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+
+# Directory for pipeline logs
+log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+
+# Description or purpose of the run
+reason: "To study the gene neighborhood of tubulin family proteins and its adapter"
+
+# Number of CPU cores available for the workflow
+cores: 24
+
 
 # mode selection:
 from_existing_dir: false
@@ -16,6 +33,19 @@ parent_dir: /home/anirudh/asgard_pipeline/database/protein_sets/ftsz/Asgard_tubu
 
 from_database: True
 
+interproscan_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+
+# genome_file
+genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
+
+# Master protein annotation table
+protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
+
+# FASTA file containing all protein sequences
+fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
+
+
+gbk_database: /home/anirudh/asgard_pipeline/database/cds_genomes
 
 
 gene_neighborhood_protein_sets:

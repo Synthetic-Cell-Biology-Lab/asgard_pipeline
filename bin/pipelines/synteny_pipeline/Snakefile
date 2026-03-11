@@ -1,0 +1,127 @@
+########################################
+# Main Snakefile
+########################################
+
+from datetime import datetime
+import os
+import shutil
+import sys
+import glob
+
+# Expect config from CLI
+if not config:
+    raise ValueError("No config provided. Use --configfile.")
+
+PROTEIN = config["protein_name"]
+
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+RUN_ID = config.get("run_id", TIMESTAMP)
+
+
+LOG = config['pipeline_log']
+BASE_DIR = os.getcwd()
+CURRENT_DIR = config.get('base_dir', workflow.basedir)
+RESULT_DIR = config.get("parent_dir", f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}")
+SYNTENY_DIR = f"{RESULT_DIR}/synteny"
+
+
+# Create directories
+os.makedirs(RESULT_DIR, exist_ok=True)
+os.makedirs(SYNTENY_DIR, exist_ok=True)
+
+
+# Include rule definitions
+
+
+
+FINAL_TARGETS = [
+    f"{RESULT_DIR}/synteny_pipeline.log",
+    f"{SYNTENY_DIR}/{RUN_ID}.synteny.html"
+    
+]
+
+
+
+rule all:
+    input:
+        FINAL_TARGETS
+
+
+rule link_log_file:
+    output:
+        f"{RESULT_DIR}/synteny_pipeline.log"
+    params:
+        logfile = LOG
+    shell:
+        "ln -sf {params.logfile} {output}"
+
+
+if config.get("from_existing_folder", False):
+    include: "rules/from_existing_folder.smk"
+elif config.get("from_database", False):
+    include: "rules/from_database.smk"
+else:
+    print("Must include atleast one mode of id extraction")
+    sys.exit()
+
+
+
+rule get_and_modify_gbk:
+    input:
+        csv = f"{SYNTENY_DIR}/{RUN_ID}.synteny.csv"
+    output:
+        gbk = temp(f"{SYNTENY_DIR}/gbkfiles/{{genome}}.synteny.gbk")
+    params:
+        window = config.get("nucleotide_window", 5000),
+        gbk_database_path = config.get("gbk_database")
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    message:
+        """
+        ==========================================
+        Extracting synteny for {wildcards.genome}
+        ==========================================
+        """
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/extract_synteny.py \
+            --input_csv {input.csv} \
+            --genome {wildcards.genome} \
+            --database_path {params.gbk_database_path} \
+            --window {params.window} \
+            --output {output.gbk}
+        """
+
+
+rule annotate_domains:
+    input:
+        gbk = f"{SYNTENY_DIR}/gbkfiles/{{genome}}.synteny.gbk"
+    output:
+        gbk = f"{SYNTENY_DIR}/gbkfiles/{{genome}}.domains.gbk"
+    params:
+        parquet = config["interproscan_file"]
+    conda:
+        f"{config['env_dir']}/duckdb_handler.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/annotate_gbk_w_ips.py \
+            --input_gbk {input.gbk} \
+            --output_gbk {output.gbk} \
+            --parquet {params.parquet}
+        """
+
+
+rule synteny_plot:
+    input:
+        expand(
+            f"{SYNTENY_DIR}/gbkfiles/{{genome}}.domains.gbk",
+            genome=config["synteny_plot_genomes"]
+        )
+    output:
+        html_file = f"{SYNTENY_DIR}/{RUN_ID}.synteny.html"
+    conda:
+        f"{config['env_dir']}/clinker.yaml"
+    shell:
+        """
+        clinker {SYNTENY_DIR}/gbkfiles/*.domains.gbk -p {output.html_file}
+        """
