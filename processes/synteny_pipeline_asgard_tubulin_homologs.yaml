@@ -6,7 +6,7 @@
 pipeline: synteny_pipeline
 
 
-run_id: tubulin_homologs_synteny
+run_id: tubulin_homologs_synteny_v5
 
 protein_name: tubulin
 
@@ -28,12 +28,13 @@ cores: 24
 
 # mode selection:
 from_existing_dir: false
-parent_dir: /home/anirudh/asgard_pipeline/database/protein_sets/ftsz/Asgard_tubulin_homologs
+# parent_dir: /home/anirudh/asgard_pipeline/database/protein_sets/ftsz/Asgard_tubulin_homologs
 
 
 from_database: True
 
 interproscan_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+interproscan_full: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
 
 # genome_file
 genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv

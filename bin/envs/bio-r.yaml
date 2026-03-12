@@ -21,4 +21,6 @@ dependencies:
   - r-optparse
   - r-ggbeeswarm
   - r-gghalves
+  - r-patchwork
+  - r-RColorBrewer
 prefix: /root/miniconda3/envs/bio-r

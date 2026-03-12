@@ -17,4 +17,6 @@ dependencies:
   - yaml
   - reportlab
   - biopython
+  - scikit-learn
+  - networkx
 prefix: /root/miniconda3/envs/Reg

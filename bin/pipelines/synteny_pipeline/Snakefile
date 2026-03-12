@@ -41,6 +41,17 @@ FINAL_TARGETS = [
 ]
 
 
+FINAL_TARGETS.extend(
+    expand(
+        f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.png", 
+            protein = config.get('gene_neighborhood_protein_sets')
+            )
+            )
+
+
+
+
+
 
 rule all:
     input:
@@ -124,4 +135,67 @@ rule synteny_plot:
     shell:
         """
         clinker {SYNTENY_DIR}/gbkfiles/*.domains.gbk -p {output.html_file}
+        """
+
+
+rule quantify_neighborhood:
+    input:
+        csv = f"{SYNTENY_DIR}/{RUN_ID}.synteny.csv",
+        parquet = config["interproscan_full"]
+    output:
+        protein_csv = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.neighborhood.csv"
+    params:
+        window = config.get("nucleotide_window", 5000),
+        protein_column = config.get("protein_column", "Manual_annotation"),
+        gbk_path = config["gbk_database"]
+
+    conda:
+        f"{config['env_dir']}/duckdb_handler.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/get_protein_neighborhoods.py \
+                --filtered_proteins {input.csv} \
+                --protein_col {params.protein_column} \
+                --ips {input.parquet} \
+                --protein {wildcards.protein} \
+                --window {params.window} \
+                --gbk_path {params.gbk_path} \
+                --out {output.protein_csv}
+
+        """
+
+
+rule cluster_neighborhood:
+    input:
+        f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.neighborhood.csv"
+    output:
+        f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/cluster_neighborhood.py \
+            --input {input} \
+            --column IPS_acc \
+            --output {output}
+        """
+    
+
+
+rule plot_cluster_frequency:
+    input:
+        f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv"
+    output:
+        freq = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.png",
+        syn_score = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.syntany_score.png"
+
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+    shell:
+        """
+        Rscript {CURRENT_DIR}/bin/units/plot_clusters.r \
+            --input {input} \
+            --output {output.freq} \
+            --output2 {output.syn_score} \
+            --protein {wildcards.protein}
         """

@@ -123,6 +123,7 @@ snakemake \
   --printshellcmds \
   --verbose \
   --conda-frontend mamba \
+  --latency-wait 60 \
   2>&1 | tee -a "$LOG_FILE"
 
 
