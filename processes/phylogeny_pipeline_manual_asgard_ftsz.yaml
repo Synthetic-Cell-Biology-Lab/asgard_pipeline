@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To observe changes between mafft and famsa"
+reason: "To test SSN part of the pipeline"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -75,9 +75,17 @@ manual_annotation_filter: ['FtsZ1', 'FtsZ2', 'CetZ', 'Tubulin']
 hmmsearch: false
 
 
+
+
+RUN_SSN: True
+
+
 ###########################################################
 # Biological Target
 ###########################################################
+
+
+
 
 # Target protein or family name
 protein_name: ftsz
@@ -143,7 +151,7 @@ PLOT_PROTEINS_PRESENCE:
 phylogeny_threads: 12
 
 # Upload resulting tree to iTOL
-run_itol_upload: True
+run_itol_upload: false
 
 # iTOL project name
 itol_project: Asgard

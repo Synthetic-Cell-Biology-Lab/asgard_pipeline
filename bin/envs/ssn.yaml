@@ -1,0 +1,9 @@
+name: ssn_env
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - cd-hit
+  - mmseqs2
+  - blast
+  - seqkit

@@ -24,6 +24,7 @@ CURRENT_DIR = config.get('base_dir', workflow.basedir)
 RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
 EXPLORATION_DIR = f"{RESULT_DIR}/extraction_exploration"
 PHYLO_DIR = f"{RESULT_DIR}/final_phylogeny"
+SSN_DIR =  f"{RESULT_DIR}/Sequence_similarity_network"
 
 # Create directories
 os.makedirs(RESULT_DIR, exist_ok=True)
@@ -43,7 +44,7 @@ else:
     sys.exit()
 
 include: "rules/exploration.smk"
-
+include: "rules/ssn.smk"
 ########################################
 # Final Target
 ########################################
@@ -71,6 +72,14 @@ FINAL_TARGETS.extend(
         level=config.get("PLOT_TAXON_LEVELS")
     )
 )
+
+FINAL_TARGETS.extend(
+        [f"{SSN_DIR}/{PROTEIN}.nr.fasta",
+        f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
+        f"{SSN_DIR}/{PROTEIN}.edges.tsv",
+        f"{SSN_DIR}/{PROTEIN}.nodes.tsv"
+        ]
+    )
 
 rule all:
     input:
@@ -253,3 +262,6 @@ rule upload_main_tree_to_itol:
             {input.default} \
             {input.annotation_files:q}
         """
+
+
+
