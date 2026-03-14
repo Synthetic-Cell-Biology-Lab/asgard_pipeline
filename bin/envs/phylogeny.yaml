@@ -12,3 +12,7 @@ dependencies:
   - python>=3.10
   - famsa>=2.4
   - hyphy>=2.5
+  - trimal
+  - cd-hit
+  - pal2nal
+  - seqkit

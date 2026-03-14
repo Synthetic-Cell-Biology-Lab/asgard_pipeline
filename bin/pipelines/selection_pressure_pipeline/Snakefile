@@ -1,0 +1,144 @@
+from datetime import datetime
+import os
+
+PROTEIN = config["protein_name"]
+
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+RUN_ID = config.get("run_id", TIMESTAMP)
+
+BASE_DIR = os.getcwd()
+CURRENT_DIR = workflow.basedir
+
+RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
+SELECTION_DIR = f"{RESULT_DIR}/selection_pressure"
+ANNOT_DIR = f"{SELECTION_DIR}/annotation_subsets"
+
+
+rule all:
+    input:
+        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.FEL.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.MEME.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.FUBAR.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.aBSREL.json", protein=config["PROTEINS"]),
+
+
+rule subset_annotations:
+    input:
+        config["PROTEIN_FILE"]
+    output:
+        f"{ANNOT_DIR}/{{protein}}.csv"
+    params:
+        annotation_col=config.get("ANNOTATION_COL", "Manual_annotation")
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    script:
+        f"../../units/subset_annotations.py"
+
+
+rule index_genomes:
+    input:
+        cds_dir=config["CDS_FILES_PATH"]
+    output:
+        touch(f"{config['CDS_FILES_PATH']}/.index_complete")
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    script:
+        "../../units/index_genomes.py"
+
+
+rule extract_sequences:
+    input:
+        subset=f"{ANNOT_DIR}/{{protein}}.csv",
+        index_done = f"{config['CDS_FILES_PATH']}/.index_complete"
+    output:
+        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.ffn",
+        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.faa"
+    params:
+        cds_path=config["CDS_FILES_PATH"]
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    script:
+        "../../units/extract_sequences.py"
+
+
+rule filter_length_outliers:
+    input:
+        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.ffn",
+        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.faa"
+    output:
+        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.faa",
+        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.ffn",
+        plot=f"{SELECTION_DIR}/{{protein}}/{{protein}}.length_distribution.png"
+    conda:
+        f"{config.get("env_dir")}/Reg.yaml"
+    script:
+        "../../units/filter_length_outliers.py"
+
+
+
+rule selection_prep:
+    input:
+        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.faa",
+        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.ffn"
+    output:
+        nr_faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.nr.faa",
+        nr_ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.nr.ffn",
+        aligned=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aligned.faa",
+        trimmed=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aligned.trimmed.faa",
+        codon=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.fna",
+        treefile=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree.treefile"
+    params:
+        tree_prefix=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree"
+    threads: 16
+    conda:
+        f"{config.get('env_dir')}/phylogeny.yaml"
+    shell:
+        """
+        bash bin/units/selection_prep.sh \
+            {input.faa} \
+            {input.ffn} \
+            {output.nr_faa} \
+            {output.nr_ffn} \
+            {output.aligned} \
+            {output.trimmed} \
+            {output.codon} \
+            {params.tree_prefix} \
+            {threads}
+        """
+
+rule hyphy_selection:
+    input:
+        aln=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.fna",
+        tree=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree.treefile"
+    output:
+        fel=f"{SELECTION_DIR}/{{protein}}/{{protein}}.FEL.json",
+        meme=f"{SELECTION_DIR}/{{protein}}/{{protein}}.MEME.json",
+        fubar=f"{SELECTION_DIR}/{{protein}}/{{protein}}.FUBAR.json",
+        absrel=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aBSREL.json"
+    threads: 4
+    conda:
+        f"{config.get('env_dir')}/phylogeny.yaml"
+    shell:
+        """
+        set -euo pipefail
+
+        hyphy FEL \
+            --alignment {input.aln} \
+            --tree {input.tree} \
+            --output {output.fel}
+
+        hyphy MEME \
+            --alignment {input.aln} \
+            --tree {input.tree} \
+            --output {output.meme}
+
+        hyphy FUBAR \
+            --alignment {input.aln} \
+            --tree {input.tree} \
+            --output {output.fubar}
+
+        hyphy aBSREL \
+            --alignment {input.aln} \
+            --tree {input.tree} \
+            --output {output.absrel}
+        """
