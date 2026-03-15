@@ -85,6 +85,7 @@ rule selection_prep:
         nr_ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.nr.ffn",
         aligned=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aligned.faa",
         trimmed=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aligned.trimmed.faa",
+        trimmed_codon=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.trimmed.fna",
         codon=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.fna",
         treefile=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree.treefile"
     params:
@@ -102,6 +103,7 @@ rule selection_prep:
             {output.aligned} \
             {output.trimmed} \
             {output.codon} \
+            {output.trimmed_codon} \
             {params.tree_prefix} \
             {threads}
         """

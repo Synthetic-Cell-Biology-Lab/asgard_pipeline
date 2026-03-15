@@ -8,7 +8,7 @@ pipeline: selection_pressure_pipeline
 protein_name: FtsZ
 
 # Identifier for this run (timestamp used if omitted)
-run_id: Asgard_tubulin_homologs
+run_id: Asgard_tubulin_homologs_3
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
