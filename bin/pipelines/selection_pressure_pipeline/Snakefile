@@ -16,10 +16,10 @@ ANNOT_DIR = f"{SELECTION_DIR}/annotation_subsets"
 
 rule all:
     input:
-        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.FEL.json", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.MEME.json", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.FUBAR.json", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/{{protein}}.aBSREL.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json", protein=config["PROTEINS"]),
 
 
 rule subset_annotations:
@@ -51,8 +51,8 @@ rule extract_sequences:
         subset=f"{ANNOT_DIR}/{{protein}}.csv",
         index_done = f"{config['CDS_FILES_PATH']}/.index_complete"
     output:
-        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.ffn",
-        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.faa"
+        ffn=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.selpre.ffn",
+        faa=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.selpre.faa"
     params:
         cds_path=config["CDS_FILES_PATH"]
     conda:
@@ -63,12 +63,12 @@ rule extract_sequences:
 
 rule filter_length_outliers:
     input:
-        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.ffn",
-        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.selpre.faa"
+        ffn=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.selpre.ffn",
+        faa=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.selpre.faa"
     output:
-        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.faa",
-        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.ffn",
-        plot=f"{SELECTION_DIR}/{{protein}}/{{protein}}.length_distribution.png"
+        faa=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.filtered.faa",
+        ffn=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.filtered.ffn",
+        plot=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.length_distribution.png"
     conda:
         f"{config.get("env_dir")}/Reg.yaml"
     script:
@@ -78,18 +78,18 @@ rule filter_length_outliers:
 
 rule selection_prep:
     input:
-        faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.faa",
-        ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.filtered.ffn"
+        faa=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.filtered.faa",
+        ffn=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.filtered.ffn"
     output:
-        nr_faa=f"{SELECTION_DIR}/{{protein}}/{{protein}}.nr.faa",
-        nr_ffn=f"{SELECTION_DIR}/{{protein}}/{{protein}}.nr.ffn",
-        aligned=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aligned.faa",
-        trimmed=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aligned.trimmed.faa",
-        trimmed_codon=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.trimmed.fna",
-        codon=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.fna",
-        treefile=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree.treefile"
+        nr_faa=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.nr.faa",
+        nr_ffn=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.nr.ffn",
+        aligned=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.aligned.faa",
+        trimmed=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.aligned.trimmed.faa",
+        codon=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.fna",
+        treefile=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile",
+        col_numbering = f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.cols"
     params:
-        tree_prefix=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree"
+        tree_prefix=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree"
     threads: 16
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -103,20 +103,36 @@ rule selection_prep:
             {output.aligned} \
             {output.trimmed} \
             {output.codon} \
-            {output.trimmed_codon} \
             {params.tree_prefix} \
-            {threads}
+            {threads} \
+            {output.col_numbering}
         """
+
+rule trim_codon_alignment:
+    input:
+        col_numbering = f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.cols",
+        codon = f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.fna",
+    output:
+        trimmed_codon = f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        "python bin/units/trim_codon_aln.py"
+        " {input.codon}"
+        " {input.col_numbering}"
+        " {output.trimmed_codon}"
+
+
 
 rule hyphy_selection:
     input:
-        aln=f"{SELECTION_DIR}/{{protein}}/{{protein}}.codon.fna",
-        tree=f"{SELECTION_DIR}/{{protein}}/{{protein}}.tree.treefile"
+        aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
+        tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        fel=f"{SELECTION_DIR}/{{protein}}/{{protein}}.FEL.json",
-        meme=f"{SELECTION_DIR}/{{protein}}/{{protein}}.MEME.json",
-        fubar=f"{SELECTION_DIR}/{{protein}}/{{protein}}.FUBAR.json",
-        absrel=f"{SELECTION_DIR}/{{protein}}/{{protein}}.aBSREL.json"
+        fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json",
+        meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json",
+        fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json",
+        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json"
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"

@@ -9,11 +9,15 @@ NR_FFN=$4
 
 ALIGNED=$5
 TRIMMED=$6
-TRIMMED_COD=$7
-CODON=$8
+# TRIMMED_COD=$7
+CODON=$7
 
-TREE_PREFIX=$9
-THREADS=$10
+TREE_PREFIX=$8
+THREADS=$9
+COL_NUMBERING=${10}
+
+# Directory of this script — used to locate trim_codon_aln.py
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ########################################
 # 1. Remove identical sequences
@@ -59,8 +63,6 @@ seqkit translate "$NR_FFN" \
     | seqkit replace -p " .*" -r "" \
     > "$TRANSLATED"
 
-# Build a lookup of translated sequences keyed by ID
-# Keep only IDs where protein sequences match exactly
 python3 - "$NR_FAA" "$TRANSLATED" "$GOOD_IDS" << 'EOF'
 import sys
 from Bio import SeqIO
@@ -106,62 +108,78 @@ mafft --localpair --maxiterate 1000 --thread -1 \
     "$CLEAN_FAA" \
     > "$ALIGNED"
 
-
-
 ########################################
-# 6. Trim codon alignment
+# 5. Trim protein alignment,
+#    saving kept column indices
 ########################################
 
 echo "Running trimAl"
 
-# trimal \
-#     -in "$CODON" \
-#     -out "$TRIMMED_COD" \
-#     -automated1
-
 trimal \
     -in "$ALIGNED" \
     -out "$TRIMMED" \
-    -automated1
+    -automated1 \
+    -colnumbering > "$COL_NUMBERING"
 
 ########################################
-# 5. Codon alignment
+# 6. Codon alignment using UNTRIMMED
+#    protein alignment
 ########################################
-
-
 
 echo "Running PAL2NAL"
 
 pal2nal.pl \
-    "$TRIMMED" \
+    "$ALIGNED" \
     "$CLEAN_FFN" \
     -output fasta \
     > "$CODON"
 
 ########################################
-# 7. Sanity check sequence counts
+# 7. Trim codon alignment using
+#    protein column indices
+########################################
+
+# echo "Trimming codon alignment"
+
+# python3 "$SCRIPT_DIR/trim_codon_aln.py" \
+#     "$CODON" \
+#     "${TRIMMED}.cols" \
+#     "$TRIMMED_COD"
+
+########################################
+# 8. Sanity check sequence counts
 ########################################
 
 echo "Sanity check"
 
 N_ALIGNED=$(grep -c "^>" "$ALIGNED")
+N_TRIMMED=$(grep -c "^>" "$TRIMMED")
 N_CODON=$(grep -c "^>" "$CODON")
 # N_TRIMMED_COD=$(grep -c "^>" "$TRIMMED_COD")
-N_TRIMMED=$(grep -c "^>" "$TRIMMED")
 
-echo "  Input (consistent): $N_GOOD"
-echo "  Protein alignment:  $N_ALIGNED"
-echo "  Codon alignment:    $N_CODON"
-# echo "  Trimmed codon:      $N_TRIMMED_COD"
-echo "  Trimmed:            $N_TRIMMED"
+echo "  Input (consistent):  $N_GOOD"
+echo "  Protein alignment:   $N_ALIGNED"
+echo "  Trimmed protein:     $N_TRIMMED"
+echo "  Codon alignment:     $N_CODON"
+# echo "  Trimmed codon:       $N_TRIMMED_COD"
 
-if [ "$N_ALIGNED" -ne "$N_CODON" ] || [ "$N_ALIGNED" -ne "$N_TRIMMED" ]; then
+if [ "$N_ALIGNED" -ne "$N_TRIMMED" ] || \
+   [ "$N_ALIGNED" -ne "$N_CODON" ]; then
     echo "ERROR: sequence count mismatch across pipeline stages" >&2
     exit 1
 fi
 
+# Verify trimmed codon length is a multiple of 3
+# COD_LEN=$(awk '/^>/{next} {gsub(/-/,""); printf $0} END{print ""}' "$TRIMMED_COD" \
+#     | head -1 | tr -d '\n' | wc -c)
+# if [ $(( COD_LEN % 3 )) -ne 0 ]; then
+#     echo "ERROR: trimmed codon alignment length ($COD_LEN) is not a multiple of 3" >&2
+#     exit 1
+# fi
+# echo "  Codon length check:  OK ($COD_LEN nt, $(( COD_LEN / 3 )) codons)"
+
 ########################################
-# 8. Phylogenetic tree
+# 9. Phylogenetic tree
 ########################################
 
 echo "Running IQ-TREE"
