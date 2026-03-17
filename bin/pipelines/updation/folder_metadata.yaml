@@ -1,25 +1,27 @@
 # ==========================================================
-# Folder Metadata - Scripts
+# Folder Metadata - Updation Scripts
 # ==========================================================
 expand_self: true
 expand_subfolders: true
 enforce_file_tracking: true
 
-
 description: >
-  Scripts used for updation of the database and the reports
+  Scripts used for repository/database update reporting and structural snapshot generation.
 
 content_type: scripts
 curation_status: active
 owner: Anirudh
-version_tag: v1.0
-
+version_tag: 0.1.2
 
 # ----------------------------------------------------------
 # FILE-LEVEL DOCUMENTATION
 # ----------------------------------------------------------
 
 files:
+  folder_metadata.yaml:
+    purpose: >
+      Metadata manifest for the updation scripts directory.
+    stability: stable
 
   snapshot.py:
     purpose: >
@@ -36,7 +38,10 @@ files:
       - hashlib
     stability: stable
 
-
 # ----------------------------------------------------------
 # APPENDIX SECTION (Printed in Report)
 # ----------------------------------------------------------
+
+appendix:
+  Coverage: >
+    Includes all files currently present in bin/pipelines/updation.

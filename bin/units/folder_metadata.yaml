@@ -1,298 +1,136 @@
 # ==========================================================
-# Folder Metadata - Scripts
+# Folder Metadata - Unit Scripts
 # ==========================================================
 expand_self: true
 expand_subfolders: true
 enforce_file_tracking: true
 
-
 description: >
-  unit function scripts
+  Standalone utility scripts used across phylogeny, annotation, synteny,
+  selection-pressure, and visualization workflows.
 
 content_type: scripts
 curation_status: active
 owner: Anirudh
-version_tag: v0.0.2
-
+version_tag: 0.1.2
 
 # ----------------------------------------------------------
 # FILE-LEVEL DOCUMENTATION
 # ----------------------------------------------------------
 
 files:
-  
+  folder_metadata.yaml:
+    purpose: Metadata manifest for all scripts in bin/units.
+    stability: stable
+
   parse_ips.py:
-    purpose: >
-      Parses InterProScan parquet output using DuckDB and extracts
-      proteins matching either a keyword (LIKE search) or a regex
-      pattern. Produces a filtered domain table and a protein ID list.
-
-    inputs:
-      - interpro_results.parquet
-      - search_string (optional, mutually exclusive with rstring)
-      - rstring (optional, mutually exclusive with search_string)
-
-    outputs:
-      - <protein_name>_domain_proteins.tsv
-      - <protein_name>.ids
-
-    parameters:
-      search_string:
-        type: string
-        description: Case-insensitive substring match against the domains column.
-      rstring:
-        type: string
-        description: Regular expression pattern applied to the domains column.
-
-    logic:
-      - Ensures exactly one of search_string or rstring is provided.
-      - Loads parquet file into DuckDB in-memory table.
-      - Filters rows where domains is not null and matches condition.
-      - Writes full (protein, domains) table as TSV with header.
-      - Writes protein IDs only as TSV without header.
-
-    dependencies:
-      - duckdb
-      - python >=3.9
-
-    snakemake_interfaces:
-      input:
-        - snakemake.input.database
-      output:
-        - snakemake.output.outfile
-        - snakemake.output.protein_ids
-      params:
-        - snakemake.params.search_string
-        - snakemake.params.rstring
-
-    failure_modes:
-      - Exits if both search_string and rstring are provided.
-      - Exits if neither search_string nor rstring is provided.
-      - Will fail if parquet schema lacks 'protein' or 'domains' columns.
-
-    performance_notes:
-      - Uses in-memory DuckDB; may require sufficient RAM for large parquet files.
-      - Could be optimized by querying read_parquet() directly without CREATE TABLE.
-
+    purpose: Filter InterProScan parquet output by keyword/regex and emit protein ID lists.
     stability: stable
 
-    fasttree_pipeline.sh:
-    purpose: >
-      Runs FastTree on a given FASTA alignment file and produces
-      a maximum-likelihood phylogenetic tree. Designed for fast
-      exploratory tree generation prior to manual curation.
-
-    inputs:
-      - aligned_sequences.fasta
-      - thread_count
-
-    outputs:
-      - prefix.treefile
-
-    parameters:
-      threads:
-        type: integer
-        description: Number of OpenMP threads for FastTree.
-
-    logic:
-      - Detects amino acid alignment.
-      - Runs FastTree with LG model and CAT approximation.
-      - Produces SH-like support values.
-      - Writes tree in Newick format.
-
-    dependencies:
-      - fasttree
-      - bash
-
-    performance_notes:
-      - Extremely fast for large datasets (thousands of sequences).
-      - Lower accuracy than IQ-TREE but suitable for exploratory clustering.
-
+  fasttree_pipeline.sh:
+    purpose: Run FastTree on an alignment to quickly infer an exploratory ML tree.
     stability: stable
-
 
   phylogeny_pipeline.sh:
-    purpose: >
-      Full phylogenetic workflow wrapper. Typically performs
-      alignment, trimming, model selection, and final ML tree
-      inference using IQ-TREE 3.
-
-    inputs:
-      - input_sequences.fasta
-      - prefix
-      - threads
-
-    outputs:
-      - prefix.treefile
-      - prefix.log
-      - alignment and intermediate files
-
-    workflow_steps:
-      - Multiple sequence alignment (MAFFT)
-      - Alignment trimming (ClipKIT or TrimAl)
-      - Model selection (IQ-TREE automatic model finder)
-      - Maximum-likelihood tree inference
-
-    dependencies:
-      - mafft
-      - clipkit or trimal
-      - iqtree >= 3
-      - bash
-
-    performance_notes:
-      - Much slower than FastTree but significantly more accurate.
-      - Recommended for final publication-grade trees.
-
+    purpose: Wrapper for full phylogeny construction (alignment, trimming, and IQ-TREE inference).
     stability: stable
-
 
   itol_upload.sh:
-    purpose: >
-      Uploads a tree and optional annotation datasets to iTOL
-      using the official batch uploader API (CGI endpoint).
-
-    inputs:
-      - treefile (Newick format)
-      - project_name
-      - tree_id_output_flag
-      - optional annotation files
-
-    outputs:
-      - flag file containing:
-          - iTOL tree ID
-          - direct access URL
-
-    parameters:
-      ITOL_API_KEY:
-        type: environment_variable
-        description: API key stored securely as environment variable.
-
-    logic:
-      - Renames tree to valid extension (.tree).
-      - Zips tree and annotation files.
-      - Sends POST request to iTOL batch uploader.
-      - Parses response for SUCCESS or ERR.
-      - Writes tree ID and URL to output flag file.
-
-    dependencies:
-      - curl
-      - zip
-      - bash
-
-    failure_modes:
-      - Fails if ITOL_API_KEY is not set.
-      - Fails if iTOL returns ERR response.
-      - Fails if project name is invalid or case mismatch.
-
+    purpose: Upload trees/annotations to iTOL using the batch uploader API.
     stability: stable
-
 
   generate_colorstrip.py:
-    purpose: >
-      Generates an iTOL DATASET_COLORSTRIP annotation file
-      based on FASTA headers. Automatically assigns distinct
-      colors to protein groups extracted from headers.
-
-    inputs:
-      - protein_set.fasta
-      - legend_mode (e.g. header parsing strategy)
-
-    outputs:
-      - iTOL_colorstrip.txt
-
-    logic:
-      - Parses FASTA headers.
-      - Removes locus_tag / protein IDs.
-      - Extracts functional label from description.
-      - Groups sequences by label.
-      - Dynamically generates maximally separated colors.
-      - Writes properly formatted DATASET_COLORSTRIP block.
-
-    dependencies:
-      - python >=3.9
-      - biopython
-
-    performance_notes:
-      - Designed for exploratory annotation visualization.
-      - Color assignment aims to maximize perceptual separation.
-
-    stability: experimental
-
-
-  get_fasta_csv_from_ids.py:
-    purpose: >
-      Filters a master FASTA and protein annotation CSV
-      using a list of protein IDs. Optionally removes
-      hypothetical proteins based on header annotation.
-
-    inputs:
-      - req_proteins.ids
-      - protein_file.csv
-      - proteins_full.fasta
-
-    outputs:
-      - req_proteins.fasta
-      - req_protein.csv
-
-    parameters:
-      remove_hypotheticals:
-        type: boolean
-        description: If true, sequences labeled as hypothetical proteins are excluded.
-
-    logic:
-      - Loads ID list into memory.
-      - Filters FASTA by matching record.id.
-      - Optionally removes sequences containing "hypothetical" in header.
-      - Filters CSV using locus_tag column.
-      - Writes filtered outputs.
-
-    dependencies:
-      - pandas
-      - biopython
-
-    failure_modes:
-      - Exits if locus_tag column missing.
-      - Exits if no protein IDs provided.
-
+    purpose: Build iTOL DATASET_COLORSTRIP annotations from FASTA header group labels.
     stability: stable
 
+  table2itol.R:
+    purpose: Convert tabular values into iTOL-compatible annotation datasets.
+    stability: stable
+
+  get_fasta_csv_from_ids.py:
+    purpose: Retrieve FASTA sequences and summary CSV rows for a provided set of IDs.
+    stability: stable
+
+  from_manual.py:
+    purpose: Build sequence sets using a manually curated list of target proteins.
+    stability: stable
+
+  run_ssn.sh:
+    purpose: Execute sequence-similarity-network generation utilities for exploratory clustering.
+    stability: stable
+
+  extract_sequences.py:
+    purpose: Extract selected sequence subsets from larger FASTA collections.
+    stability: stable
+
+  subset_dataframe.py:
+    purpose: Subset tabular datasets by provided identifiers/filters.
+    stability: stable
+
+  subset_annotations.py:
+    purpose: Subset annotation tables/files to match selected protein or genome sets.
+    stability: stable
+
+  get_annotation_csv.py:
+    purpose: Generate/collect annotation CSV outputs for downstream visualization/reporting.
+    stability: stable
 
   extract_proteins_from_cds_genomes.py:
-    purpose: >
-      Extracts protein sequences from genome CDS FASTA files
-      and aggregates them into a combined protein FASTA with
-      associated metadata summary.
+    purpose: Extract protein sequences from CDS/genome sources for pipeline inputs.
+    stability: stable
 
-    inputs:
-      - multiple genome CDS FASTA files
+  index_genomes.py:
+    purpose: Build genome-level indices/lookup tables used by neighborhood and synteny scripts.
+    stability: stable
 
-    outputs:
-      - combined_proteins.faa
-      - proteins_summary.csv
+  get_protein_neighborhoods.py:
+    purpose: Compute nearby genes/proteins around query proteins from indexed genomes.
+    stability: stable
 
-    logic:
-      - Iterates through genome directories.
-      - Parses CDS FASTA files.
-      - Extracts protein sequences and metadata.
-      - Writes combined FASTA and summary table.
+  extract_synteny.py:
+    purpose: Derive synteny blocks/neighborhood summaries for selected proteins/genomes.
+    stability: stable
 
-    dependencies:
-      - pandas
-      - biopython
+  cluster_neighborhood.py:
+    purpose: Cluster neighborhood feature profiles for comparative synteny analyses.
+    stability: stable
 
-    performance_notes:
-      - Suitable for moderate genome collections.
-      - May require batching for very large datasets.
+  annotate_gbk_w_ips.py:
+    purpose: Add InterProScan-derived functional labels to GenBank feature annotations.
+    stability: stable
 
-    stability: experimental
-  
+  trim_codon_aln.py:
+    purpose: Trim codon alignments while preserving frame consistency for selection analyses.
+    stability: stable
 
+  selection_prep.sh:
+    purpose: Prepare alignments, trees, and supporting inputs for selection-pressure workflows.
+    stability: stable
 
+  filter_length_outliers.py:
+    purpose: Remove extreme-length sequence outliers prior to alignment/tree inference.
+    stability: stable
 
+  bubble_heat_map_presence_matrix.r:
+    purpose: Render bubble heatmaps from presence/absence matrix inputs.
+    stability: stable
+
+  bubble_heat_map_presence_table.r:
+    purpose: Render bubble heatmaps from long-format presence tables.
+    stability: stable
+
+  plot_clusters.r:
+    purpose: Plot cluster assignments and summaries for exploratory data analysis.
+    stability: stable
+
+  taxon_violin_plot.r:
+    purpose: Generate violin plots of taxon-level distributions/metrics.
+    stability: stable
 
 # ----------------------------------------------------------
 # APPENDIX SECTION (Printed in Report)
 # ----------------------------------------------------------
 
-notes:
-  - extract_proteins.py assumes one .faa per genome folder.
+appendix:
+  Coverage: >
+    Includes all files currently present in bin/units.
