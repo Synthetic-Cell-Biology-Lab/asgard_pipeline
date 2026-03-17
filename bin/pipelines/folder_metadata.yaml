@@ -1,33 +1,67 @@
 # ==========================================================
-# Folder Metadata - Scripts
+# Folder Metadata - Pipelines
 # ==========================================================
 expand_self: true
 expand_subfolders: true
 enforce_file_tracking: false
 
 description: >
-  Folder containing pipelines 
+  Workflow pipelines for phylogeny, synteny, selection-pressure analyses,
+  and repository/database update tooling.
 
 content_type: pipelines
 curation_status: active
 owner: Anirudh
-version_tag: v0.0.2
+version_tag: 0.1.2
 
 # ----------------------------------------------------------
 # FILE-LEVEL DOCUMENTATION
 # ----------------------------------------------------------
 
 files:
-  updation: >
-    contains scripts for updation of the database and version control
-  phylogeny_pipeline: >
-    contains pipeline for protein subset extraction, and phylogeny
+  folder_metadata.yaml: >
+    Metadata index for all pipeline subdirectories and workflow entrypoints.
 
+subdirectories:
+  updation:
+    purpose: >
+      Utilities used to generate structural snapshots and support database/report updates.
+    files:
+      - folder_metadata.yaml
+      - snapshot.py
 
+  phylogeny_pipeline:
+    purpose: >
+      Snakemake workflow for InterPro-driven protein subset extraction,
+      sequence retrieval, similarity-network exploration, and phylogeny preparation.
+    files:
+      - Snakefile
+      - rules/exploration.smk
+      - rules/extract_ids.smk
+      - rules/from_manual.smk
+      - rules/parse_ips.smk
+      - rules/ssn.smk
 
+  synteny_pipeline:
+    purpose: >
+      Snakemake workflow for building synteny neighborhoods from either the database
+      or an existing set of proteins/genomes.
+    files:
+      - Snakefile
+      - rules/from_database.smk
+      - rules/from_existing_folder.smk
+
+  selection_pressure_pipeline:
+    purpose: >
+      Snakemake workflow entrypoint for codon-level selection pressure analyses.
+    files:
+      - Snakefile
 
 # ----------------------------------------------------------
 # APPENDIX SECTION (Printed in Report)
 # ----------------------------------------------------------
 
-
+appendix:
+  Coverage: >
+    This file tracks every known pipeline directory and all workflow files currently
+    present under bin/pipelines.
