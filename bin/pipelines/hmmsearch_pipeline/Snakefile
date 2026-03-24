@@ -1,0 +1,248 @@
+import os
+from pathlib import Path
+
+configfile: "config.yaml"
+
+# -------------------------------
+# CONFIG
+# -------------------------------
+OUTDIR = Path(config["output"]["dir"])
+PROJECT_NAME = config['project']['title']
+RESULT_DIR = OUTDIR / PROJECT_NAME / "hmmsearch"
+
+RUN_ID = config['run_id']
+
+PFAM_DB = config["pfam"]["hmm_db"]
+PFAM_NAMES = config["pfam"]["names"]
+DB = config["database"]["fasta"]
+
+EVALUE = config["params"]["evalue"]
+CPUS = config["params"]["cpus"]
+
+FINAL_CSV = f"{RESULT_DIR}/hits/final_hits_{RUN_ID}.csv"
+PFAM_IDS_FILE = f"{RESULT_DIR}/pfam_ids.txt"
+MAPPING_FILE = f"{RESULT_DIR}/pfam_mapping.tsv"
+
+# -------------------------------
+# FINAL TARGET
+# -------------------------------
+rule all:
+    input:
+        FINAL_CSV,
+        PFAM_IDS_FILE,
+        f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta",
+        f"{RESULT_DIR}/sequences",
+        f"{RESULT_DIR}/report/sequence_report_{RUN_ID}.pdf"
+
+# -------------------------------
+# Download Pfam DB (if missing)
+# -------------------------------
+rule download_pfam:
+    output:
+        PFAM_DB
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        mkdir -p $(dirname {output})
+        wget -q https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.hmm.gz
+        gunzip -c Pfam-A.hmm.gz > {output}
+        """
+
+# -------------------------------
+# Press Pfam DB
+# -------------------------------
+rule press_pfam:
+    input:
+        PFAM_DB
+    output:
+        PFAM_DB + ".h3m"
+    conda:
+        f"{config['env_dir']}/hmmer.yaml"
+    shell:
+        """
+        hmmpress {input}
+        """
+
+# -------------------------------
+# Build NAME → ACC mapping
+# -------------------------------
+rule build_pfam_mapping:
+    input:
+        PFAM_DB
+    output:
+        MAPPING_FILE
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        mkdir -p {RESULT_DIR}
+        grep -E "^NAME|^ACC" {input} | paste - - | \
+        awk '{{print $2 "\\t" $4}}' > {output}
+        """
+
+# -------------------------------
+# Resolve names → PFAM IDs
+# -------------------------------
+rule resolve_pfam_ids:
+    input:
+        MAPPING_FILE
+    output:
+        PFAM_IDS_FILE
+    params:
+        names=PFAM_NAMES
+    run:
+        mapping = {}
+
+        with open(input[0]) as f:
+            for line in f:
+                name, acc = line.strip().split("\t")
+                mapping[name] = acc
+
+        with open(output[0], "w") as out:
+            for name in params.names:
+                if name in mapping:
+                    out.write(mapping[name] + "\n")
+                else:
+                    print(f"WARNING: {name} not found in Pfam mapping")
+
+# -------------------------------
+# Extract HMMs using hmmfetch
+# -------------------------------
+rule extract_hmms:
+    input:
+        PFAM_DB,
+        PFAM_DB + ".h3m",
+        PFAM_IDS_FILE
+    output:
+        f"{RESULT_DIR}/hmms/{RUN_ID}.hmm"
+    conda:
+        f"{config['env_dir']}/hmmer.yaml"
+    shell:
+        """
+        mkdir -p {RESULT_DIR}/hmms
+        > {output}
+
+        while read pfam; do
+            echo "Fetching $pfam"
+            hmmfetch {input[0]} $pfam >> {output} || echo "WARNING: $pfam failed"
+        done < {input[2]}
+
+        touch {output}
+        """
+
+# -------------------------------
+# Press combined HMM
+# -------------------------------
+rule press_combined:
+    input:
+        f"{RESULT_DIR}/hmms/{RUN_ID}.hmm"
+    output:
+        f"{RESULT_DIR}/hmms/{RUN_ID}.hmm.h3m"
+    conda:
+        f"{config['env_dir']}/hmmer.yaml"
+    shell:
+        """
+        hmmpress {input}
+        """
+
+# -------------------------------
+# Run hmmsearch
+# -------------------------------
+rule hmmsearch:
+    input:
+        hmm=f"{RESULT_DIR}/hmms/{RUN_ID}.hmm",
+        db=DB
+    output:
+        f"{RESULT_DIR}/domtblout/{RUN_ID}.domtblout"
+    threads: CPUS
+    conda:
+        f"{config['env_dir']}/hmmer.yaml"
+    shell:
+        """
+        mkdir -p {RESULT_DIR}/domtblout
+        hmmsearch --cpu {threads} \
+            --domE {EVALUE} \
+            --domtblout {output} \
+            {input.hmm} {input.db}
+        """
+
+# -------------------------------
+# Parse results → CSV
+# -------------------------------
+rule parse_results:
+    input:
+        f"{RESULT_DIR}/domtblout/{RUN_ID}.domtblout"
+    output:
+        FINAL_CSV
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        mkdir -p {RESULT_DIR}/hits
+        python bin/pipelines/hmmsearch_pipeline/scripts/domtblout_to_csv.py {input} {output}
+        """
+
+rule extract_hit_sequences:
+    input:
+        csv=FINAL_CSV,
+        fasta=DB
+    output:
+        f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        python bin/pipelines/hmmsearch_pipeline/scripts/extract_hits_fasta.py {input.csv} {input.fasta} {output}
+        """
+
+
+
+rule review_gate:
+    input:
+        FINAL_CSV
+    output:
+        f"{RESULT_DIR}/reviewed_accessions.tsv"
+    message:
+        "Please review hits and create reviewed_accessions.tsv"
+    run:
+        if not os.path.exists(output[0]):
+            print("\n=== REVIEW REQUIRED ===")
+            print(f"Inspect: {input[0]}")
+            print(f"Create file: {output[0]}")
+            print("One protein ID per line\n")
+            raise ValueError("Manual review step not completed.")
+
+
+rule extract_genomic_sequences:
+    input:
+        review=f"{RESULT_DIR}/reviewed_accessions.tsv",
+        gbff=config["database"]["gbff"]
+    output:
+        directory(f"{RESULT_DIR}/sequences")
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        mkdir -p {output}
+        python bin/pipelines/hmmsearch_pipeline/scripts/extract_genomic_regions.py \
+            {input.review} {input.gbff} {output}
+        """
+
+
+
+rule generate_pdf_report:
+    input:
+        seq_dir = f"{RESULT_DIR}/sequences"
+    output:
+        f"{RESULT_DIR}/report/sequence_report_{RUN_ID}.pdf"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        mkdir -p {RESULT_DIR}/report
+        python bin/pipelines/hmmsearch_pipeline/scripts/generate_pdf_report.py \
+            {input.seq_dir} {output}
+        """
+
+
