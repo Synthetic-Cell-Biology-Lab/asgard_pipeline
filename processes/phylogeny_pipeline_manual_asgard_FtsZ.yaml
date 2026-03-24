@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: Asgard_tubulin_homologs
+run_id: kinesin_run1
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To test SSN part of the pipeline"
+reason: "To search for motor proteins"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -39,9 +39,9 @@ cores: 24
 # IPS Parsing mode
 ###########################################################
 # Extract IDs from InterProScan results
-parse_ips: false
+parse_ips: True
 # Remove sequences annotated as hypothetical proteins
-remove_hypotheticals: True
+remove_hypotheticals: False
 
 
 # InterProScan summary parquet database
@@ -62,7 +62,7 @@ rstring: null
 ###########################################################
 
 # Extract IDs from manual annotations
-from_manual: True
+from_manual: False
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
 manual_annotation_filter: ['FtsZ1', 'FtsZ2', 'CetZ', 'Tubulin']

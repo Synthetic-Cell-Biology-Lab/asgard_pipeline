@@ -242,7 +242,7 @@ rule upload_main_tree_to_itol:
         tree = f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
         done_annot = f"{PHYLO_DIR}/annotation.done.flag",
         colorstrip = f"{RESULT_DIR}/extraction_exploration/{PROTEIN}_colorstrip.txt",
-        default = lambda wildcards: config.get("default_annotation", ""),
+        default = lambda wildcards: config.get("default_annotation", []),
         annotation_files = lambda wildcards: sorted(
             glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
         )
