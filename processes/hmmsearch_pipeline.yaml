@@ -1,0 +1,46 @@
+pipeline: "hmmsearch_pipeline"
+
+protein_name: TRP1
+
+
+# Identifier for this run (timestamp used if omitted)
+run_id: pullulans_deletion_genes
+
+# Base directory for the pipeline
+base_dir: "/home/anirudh/asgard_pipeline"
+
+# Conda environment directory
+env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+
+# Directory for pipeline logs
+log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+
+# Description or purpose of the run
+reason: "to extract proteins using hmm for deletion in pullulans"
+
+# Number of CPU cores available for the workflow
+cores: 24
+
+
+project:
+  title: "pullulans_deletion_genes"
+  description: "Search selected Pfam domains against pullulans protein database"
+
+pfam:
+  hmm_db: "/home/anirudh/asgard_pipeline/database/pfam/Pfam-A.hmm"
+  names:
+    - PRAI
+
+database:
+  fasta: "/home/anirudh/asgard_pipeline/database/other_organisms/pullulans/GCF_000721785.1_Aureobasidium_pullulans_var._pullulans_EXF-150_assembly_version_1.0_protein.faa"
+  fna: "/home/anirudh/asgard_pipeline/database/other_organisms/pullulans/GCF_000721785.1_Aureobasidium_pullulans_var._pullulans_EXF-150_assembly_version_1.0_genomic.fna"
+  gbff: "/home/anirudh/asgard_pipeline/database/other_organisms/pullulans/GCF_000721785.1_Aureobasidium_pullulans_var._pullulans_EXF-150_assembly_version_1.0_genomic.gbff"
+
+
+
+params:
+  evalue: 1e-3
+  cpus: 16
+
+output:
+  dir: "database/protein_sets"

@@ -1,0 +1,13 @@
+name: hmmer
+channels:
+  - conda-forge
+  - bioconda
+channel_priority: strict
+
+dependencies:
+  - python=3.10
+  - hmmer
+  - seqkit
+  - pandas
+  - biopython>=1.81
+  - pyyaml
