@@ -8,7 +8,7 @@ pipeline: selection_pressure_pipeline
 protein_name: FtsZ
 
 # Identifier for this run (timestamp used if omitted)
-run_id: Asgard_tubulin_homologs_5
+run_id: Asgard_tubulin_homologs_6
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -34,6 +34,8 @@ CDS_FILES_PATH: /home/anirudh/asgard_pipeline/database/cds_genomes
 
 PROTEIN_FILE: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
 
+
+GENOME_FILE: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
 
 PROTEINS:
   - CetZ
