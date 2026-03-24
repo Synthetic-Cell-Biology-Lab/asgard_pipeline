@@ -136,13 +136,19 @@ prop_df$protein <- factor(prop_df$protein, levels = protein_list)
 
 # -----------------------------
 # Identify proteins whose max proportion across ALL taxa < 0.05
+# Only apply the rare-protein text treatment when there are multiple proteins.
+# With a single protein, always render as dots so the plot is never blank.
 # -----------------------------
 
-rare_proteins <- prop_df %>%
-  group_by(protein) %>%
-  summarise(max_prop = max(proportion), .groups = "drop") %>%
-  filter(max_prop < 0.05) %>%
-  pull(protein)
+if (length(protein_list) > 1) {
+  rare_proteins <- prop_df %>%
+    group_by(protein) %>%
+    summarise(max_prop = max(proportion), .groups = "drop") %>%
+    filter(max_prop < 0.05) %>%
+    pull(protein)
+} else {
+  rare_proteins <- character(0)   # never treat a lone protein as "rare"
+}
 
 dot_df  <- prop_df %>% filter(!protein %in% rare_proteins)
 text_df <- prop_df %>%
@@ -152,32 +158,49 @@ text_df <- prop_df %>%
 
 # -----------------------------
 # Dot spacing: 0.2 units between copy levels, centered on protein position.
+# Guard against dot_df being empty (all proteins rare — impossible after fix
+# above, but kept for safety).
 # -----------------------------
 
 DOT_STEP <- 0.2   # distance between copy-level dots (data units)
 
-max_copies_per_protein <- dot_df %>%
-  group_by(protein) %>%
-  summarise(n_levels = max(copy_level_plot), .groups = "drop")
+if (nrow(dot_df) > 0) {
+  max_copies_per_protein <- dot_df %>%
+    group_by(protein) %>%
+    summarise(n_levels = max(copy_level_plot), .groups = "drop")
 
-dot_df <- dot_df %>%
-  left_join(max_copies_per_protein, by = "protein") %>%
-  mutate(
-    # Use match() against the full protein_list so x position is always correct
-    # regardless of which proteins were filtered as rare
-    protein_idx = match(as.character(protein), protein_list),
-    x_offset = if_else(
-      n_levels == 1,
-      0,
-      (copy_level_plot - 1) * DOT_STEP - (n_levels - 1) * DOT_STEP / 2
-    ),
-    x_pos = protein_idx + x_offset
-  )
+  dot_df <- dot_df %>%
+    left_join(max_copies_per_protein, by = "protein") %>%
+    mutate(
+      protein_idx = match(as.character(protein), protein_list),
+      x_offset = if_else(
+        n_levels == 1,
+        0,
+        (copy_level_plot - 1) * DOT_STEP - (n_levels - 1) * DOT_STEP / 2
+      ),
+      x_pos = protein_idx + x_offset
+    )
+} else {
+  # Empty dot_df — add required columns so downstream splits don't error
+  dot_df <- dot_df %>%
+    mutate(n_levels = integer(0), protein_idx = integer(0),
+           x_offset = numeric(0), x_pos = numeric(0))
+}
 
 # Split AFTER x_pos is computed
 dot_perfect  <- dot_df %>% filter(proportion == 1.0)
 dot_gradient <- dot_df %>% filter(proportion > 0 & proportion < 1.0)
 dot_empty    <- dot_df %>% filter(proportion == 0) %>% filter(copy_level_plot == 1)
+
+# -----------------------------
+# x-axis limits — widen slightly for single-protein plots so the dot
+# isn't squeezed against the panel edge.
+# -----------------------------
+
+n_proteins  <- length(protein_list)
+x_pad       <- if (n_proteins == 1) 0.6 else 0.5   # extra half-unit padding each side
+x_lim_lo   <- 1 - x_pad
+x_lim_hi   <- n_proteins + x_pad
 
 # -----------------------------
 # Plot
@@ -225,13 +248,11 @@ p <- ggplot(mapping = aes(y = taxon_label)) +
     na.value = "grey80"
   ) +
 
-
-
   scale_x_continuous(
     position = "top",
     breaks   = seq_along(protein_list),
     labels   = protein_list,
-    limits   = c(0.5, length(protein_list) + 0.5),
+    limits   = c(x_lim_lo, x_lim_hi),
     expand   = expansion(add = 0.1)
   ) +
 
@@ -257,7 +278,7 @@ p <- ggplot(mapping = aes(y = taxon_label)) +
 
 dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
 
-plot_width  <- 2.5 + 2.0 * length(protein_list)
+plot_width  <- 2.5 + 2.0 * n_proteins
 plot_height <- 2   + 0.5 * length(unique(prop_df$taxon_label))
 
 ggsave(outfile, p, width = plot_width, height = plot_height, dpi = 300)

@@ -16,10 +16,10 @@ ANNOT_DIR = f"{SELECTION_DIR}/annotation_subsets"
 
 rule all:
     input:
-        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
 
 
 rule subset_annotations:
@@ -123,16 +123,13 @@ rule trim_codon_alignment:
         " {output.trimmed_codon}"
 
 
-
-rule hyphy_selection:
+# ---------------- FEL ----------------
+rule hyphy_fel:
     input:
         aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
         tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json",
-        meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json",
-        fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json",
-        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json"
+        fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json"
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -144,19 +141,149 @@ rule hyphy_selection:
             --alignment {input.aln} \
             --tree {input.tree} \
             --output {output.fel}
+        """
+
+
+# ---------------- MEME ----------------
+rule hyphy_meme:
+    input:
+        aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
+        tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
+    output:
+        meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json"
+    threads: 4
+    conda:
+        f"{config.get('env_dir')}/phylogeny.yaml"
+    shell:
+        """
+        set -euo pipefail
 
         hyphy MEME \
             --alignment {input.aln} \
             --tree {input.tree} \
             --output {output.meme}
+        """
+
+
+
+# ---------------- FUBAR ----------------
+rule hyphy_fubar:
+    input:
+        aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
+        tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
+    output:
+        fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json"
+    threads: 4
+    conda:
+        f"{config.get('env_dir')}/phylogeny.yaml"
+    shell:
+        """
+        set -euo pipefail
 
         hyphy FUBAR \
             --alignment {input.aln} \
             --tree {input.tree} \
             --output {output.fubar}
+        """
+
+# ---------------- aBSREL ----------------
+rule hyphy_absrel:
+    input:
+        aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
+        tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
+    output:
+        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json"
+    threads: 4
+    conda:
+        f"{config.get('env_dir')}/phylogeny.yaml"
+    shell:
+        """
+        set -euo pipefail
 
         hyphy aBSREL \
             --alignment {input.aln} \
             --tree {input.tree} \
             --output {output.absrel}
         """
+
+# ---------------- SLAC ----------------
+rule hyphy_slac:
+    input:
+        aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
+        tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
+    output:
+        slac=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.SLAC.json"
+    threads: 4
+    conda:
+        f"{config.get('env_dir')}/phylogeny.yaml"
+    shell:
+        """
+        set -euo pipefail
+
+        hyphy SLAC \
+            --alignment {input.aln} \
+            --tree {input.tree} \
+            --output {output.slac}
+        """
+
+
+rule parse_hyphy:
+    input:
+        fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json",
+        meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json",
+        fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json",
+        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json",
+        slac=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.SLAC.json"
+    output:
+        fel_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FEL.csv",
+        meme_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_MEME.csv",
+        fubar_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FUBAR.csv",
+        absrel_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_aBSREL.csv",
+        slac_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_slac.csv"
+    params:
+        outdir=f"{SELECTION_DIR}/{{protein}}/tests"
+    
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"        
+    shell:
+        """
+        python bin/units/hyphy_parser.py \
+            --fel {input.fel} \
+            --meme {input.meme} \
+            --fubar {input.fubar} \
+            --absrel {input.absrel} \
+            --slac {input.slac} \
+            --outdir {params.outdir} \
+            --prefix {wildcards.protein}
+        """
+
+
+rule analyze_hyphy:
+    input:
+        fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FEL.csv",
+        meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_MEME.csv",
+        fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FUBAR.csv",
+        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_aBSREL.csv",
+        slac=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_slac.csv"
+    output:
+        plot=f"{SELECTION_DIR}/{{protein}}/analysis/plots/{{protein}}_selection_plot.png",
+        summary=f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv",
+        itol=f"{SELECTION_DIR}/{{protein}}/analysis/itol/{{protein}}_absrel.txt"
+    params:
+        outdir=f"{SELECTION_DIR}/{{protein}}/analysis"
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    shell:
+        """
+        python bin/units/hyphy_analysis.py \
+            --fel {input.fel} \
+            --meme {input.meme} \
+            --fubar {input.fubar} \
+            --absrel {input.absrel} \
+            --slac {input.slac} \
+            --outdir {params.outdir} \
+            --prefix {wildcards.protein}
+        """
+
+
+

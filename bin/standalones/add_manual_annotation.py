@@ -11,7 +11,7 @@ INPUT_TABLE = "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered
 
 # dictionary: annotation_name -> file containing protein ids
 annotation_files = {
-    "SepF" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/SepF.ids"
+    "Dynein_like" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/Dynein.ids"
 }
 
 # ============================================================
