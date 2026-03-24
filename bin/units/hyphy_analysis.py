@@ -6,19 +6,22 @@ import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
 import seaborn as sns
 
 
 # ------------------ STYLE ------------------
 
 sns.set_theme(style="whitegrid", context="talk")
+plt.rcParams["font.family"] = "DejaVu Sans"
 
 PALETTE = {
-    "FEL": "#1f77b4",        # blue
-    "SLAC": "#2ca02c",       # green
-    "MEME": "#d62728",       # red
-    "FUBAR+": "#9467bd",     # purple
-    "FUBAR-": "#8c564b"      # brown
+    "FEL":    "#2166ac",   # blue
+    "SLAC":   "#4dac26",   # green
+    "MEME":   "#d7191c",   # red
+    "FUBAR+": "#9467bd",   # purple
+    "FUBAR-": "#8c564b",   # brown
 }
 
 
@@ -36,197 +39,212 @@ def find_column(df, keywords):
     return None
 
 
-# ------------------ PLOTTING ------------------
+def smooth(series, window=11):
+    return pd.Series(series).rolling(window, center=True, min_periods=1).mean()
+
+
+# ------------------ MAIN PLOT ------------------
 
 def plot_selection(fel, slac, meme, fubar, outpath, title):
+    """
+    4-panel stacked layout — standard for HyPhy selection analyses:
 
-    fig, ax = plt.subplots(figsize=(16,6))
+      Panel 1 (top, tall)  : FEL ω line + SLAC ω smoothed line
+      Panel 2              : FUBAR posterior probabilities (pos & neg)
+      Panel 3              : MEME –log10(p) line with significance threshold
+      Panel 4 (bottom,thin): Site-level rug / significance indicators
+    """
 
-    # ---------------- FEL ----------------
-    if "omega" in fel.columns:
-        fel_omega = fel["omega"].clip(0, 5)
-
-        sns.lineplot(
-            x=fel["site"],
-            y=fel_omega,
-            ax=ax,
-            label="FEL",
-            color=PALETTE["FEL"],
-            linewidth=2
-        )
-
-    # ---------------- SLAC ----------------
-    if slac is not None and "omega" in slac.columns:
-        slac_omega = slac["omega"].clip(0, 5)
-        smooth = pd.Series(slac_omega).rolling(7, center=True).mean()
-
-        sns.lineplot(
-            x=slac["site"],
-            y=smooth,
-            ax=ax,
-            label="SLAC (smoothed)",
-            color=PALETTE["SLAC"],
-            linestyle="--",
-            linewidth=2,
-            alpha=0.9
-        )
-
-    # ---------------- MEME ----------------
-    meme_p = find_column(meme, ["p"])
-    if meme_p:
-        meme_sig = meme[meme[meme_p] < 0.05]
-
-        ax.vlines(
-            meme_sig["site"],
-            ymin=1,
-            ymax=3,
-            color=PALETTE["MEME"],
-            alpha=0.6,
-            linewidth=1.5,
-            label="MEME (episodic)"
-        )
-
-    # ---------------- FUBAR ----------------
-    pos_col = find_column(fubar, ["prob[alpha<beta]"])
-    neg_col = find_column(fubar, ["prob[alpha>beta]"])
-
-    if pos_col:
-        pos_sites = fubar[fubar[pos_col] > 0.9]
-
-        sns.scatterplot(
-            x=pos_sites["site"],
-            y=[2.6]*len(pos_sites),
-            ax=ax,
-            color=PALETTE["FUBAR+"],
-            label="FUBAR +",
-            s=40,
-            edgecolor="black",
-            linewidth=0.3
-        )
-
-    if neg_col:
-        neg_sites = fubar[fubar[neg_col] > 0.9]
-
-        sns.scatterplot(
-            x=neg_sites["site"],
-            y=[0.4]*len(neg_sites),
-            ax=ax,
-            color=PALETTE["FUBAR-"],
-            label="FUBAR -",
-            s=40,
-            edgecolor="black",
-            linewidth=0.3
-        )
-
-    # ---------------- Baseline ----------------
-    ax.axhline(1, linestyle="--", color="black", alpha=0.7, linewidth=1.5)
-
-    # ---------------- Labels ----------------
-    ax.set_xlabel("Codon site", fontsize=14)
-    ax.set_ylabel("dN/dS (ω)", fontsize=14)
-    ax.set_title(title, fontsize=16, weight="bold")
-
-    ax.set_ylim(0, 4)
-
-    # Cleaner legend
-    ax.legend(frameon=False, fontsize=11)
-
-    sns.despine()
-
-    plt.tight_layout()
-    plt.savefig(outpath, dpi=300)
-    plt.close()
-
-
-# ------------------ MEME MANHATTAN ------------------
-
-def plot_manhattan(meme, outpath, protein):
-
-    p_col = find_column(meme, ["p-value", "pval", "p"])
-    if not p_col:
-        print("[WARN] No p-value column for MEME")
-        return
-
-    pvals = meme[p_col].replace(0, 1e-300)
-
-    plt.figure(figsize=(16,5))
-
-    sns.scatterplot(
-        x=meme["site"],
-        y=-np.log10(pvals),
-        color="#444444",
-        s=20
+    fig = plt.figure(figsize=(18, 14))
+    gs  = gridspec.GridSpec(
+        4, 1,
+        height_ratios=[3, 2, 2, 0.6],
+        hspace=0.08
     )
 
-    plt.axhline(-np.log10(0.05), linestyle="--", color="red", linewidth=1.5)
+    ax_omega  = fig.add_subplot(gs[0])
+    ax_fubar  = fig.add_subplot(gs[1], sharex=ax_omega)
+    ax_meme   = fig.add_subplot(gs[2], sharex=ax_omega)
+    ax_rug    = fig.add_subplot(gs[3], sharex=ax_omega)
 
-    plt.xlabel("Codon site")
-    plt.ylabel("-log10(p-value)")
-    plt.title(f"MEME significance: {protein}", weight="bold")
+    sites = fel["site"].values
 
-    sns.despine()
-    plt.tight_layout()
+    # ── Panel 1 : FEL & SLAC ω ────────────────────────────────────────────
 
-    plt.savefig(outpath, dpi=300)
+    # FEL raw ω (clipped for readability)
+    fel_omega = fel["omega"].clip(0, 5).values
+    ax_omega.plot(sites, fel_omega,
+                  color=PALETTE["FEL"], linewidth=1.5, alpha=0.85,
+                  label="FEL ω")
+
+    # shade FEL positive selection (ω > 1, significant)
+    if "significant" in fel.columns and "omega" in fel.columns:
+        sig_mask = (fel["significant"].values) & (fel["omega"].values > 1)
+        ax_omega.fill_between(sites, 1, fel_omega,
+                              where=sig_mask,
+                              interpolate=True,
+                              color=PALETTE["FEL"], alpha=0.18,
+                              label="_nolegend_")
+
+    # SLAC smoothed ω
+    if slac is not None and "omega" in slac.columns:
+        slac_omega = slac["omega"].clip(0, 5).values
+        slac_sm    = smooth(slac_omega, window=15)
+        ax_omega.plot(sites, slac_sm,
+                      color=PALETTE["SLAC"], linewidth=2,
+                      linestyle="--", alpha=0.9,
+                      label="SLAC ω (smoothed)")
+
+    ax_omega.axhline(1, color="black", linestyle=":", linewidth=1.4, alpha=0.7)
+    ax_omega.set_ylim(0, 5)
+    ax_omega.set_ylabel("dN/dS (ω)", fontsize=13)
+    ax_omega.legend(frameon=False, fontsize=11, loc="upper right")
+    ax_omega.set_title(title, fontsize=16, fontweight="bold", pad=12)
+    ax_omega.tick_params(labelbottom=False)
+
+    # ── Panel 2 : FUBAR posteriors ────────────────────────────────────────
+
+    pos_col = find_column(fubar, ["posterior_positive", "prob[alpha<beta]"])
+    neg_col = find_column(fubar, ["posterior_negative", "prob[alpha>beta]"])
+
+    if pos_col:
+        ax_fubar.plot(fubar["site"], fubar[pos_col],
+                      color=PALETTE["FUBAR+"], linewidth=1.5,
+                      label="FUBAR P(pos sel)")
+        ax_fubar.fill_between(fubar["site"], 0, fubar[pos_col],
+                              color=PALETTE["FUBAR+"], alpha=0.20)
+
+    if neg_col:
+        ax_fubar.plot(fubar["site"], fubar[neg_col],
+                      color=PALETTE["FUBAR-"], linewidth=1.5,
+                      label="FUBAR P(neg sel)")
+        ax_fubar.fill_between(fubar["site"], 0, fubar[neg_col],
+                              color=PALETTE["FUBAR-"], alpha=0.12)
+
+    ax_fubar.axhline(0.9, color="grey", linestyle="--",
+                     linewidth=1.2, alpha=0.7, label="0.9 threshold")
+    ax_fubar.set_ylim(0, 1.05)
+    ax_fubar.set_ylabel("Posterior prob.", fontsize=13)
+    ax_fubar.legend(frameon=False, fontsize=10, loc="upper right")
+    ax_fubar.tick_params(labelbottom=False)
+
+    # ── Panel 3 : MEME –log10(p) ─────────────────────────────────────────
+
+    p_col = find_column(meme, ["pvalue", "p-value", "p"])
+    if p_col:
+        pvals   = meme[p_col].replace(0, 1e-300)
+        neg_log = -np.log10(pvals)
+
+        ax_meme.plot(meme["site"], neg_log,
+                     color=PALETTE["MEME"], linewidth=1.5, alpha=0.85,
+                     label="MEME –log₁₀(p)")
+        ax_meme.fill_between(meme["site"], 0, neg_log,
+                             color=PALETTE["MEME"], alpha=0.15)
+
+    thresh = -np.log10(0.05)
+    ax_meme.axhline(thresh, color="black", linestyle="--",
+                    linewidth=1.2, alpha=0.7, label="p = 0.05")
+    ax_meme.set_ylabel("–log₁₀(p)", fontsize=13)
+    ax_meme.set_ylim(0, None)
+    ax_meme.legend(frameon=False, fontsize=10, loc="upper right")
+    ax_meme.tick_params(labelbottom=False)
+
+    # ── Panel 4 : significance rug ────────────────────────────────────────
+
+    ax_rug.set_ylim(0, 3)
+    ax_rug.set_yticks([])
+    ax_rug.set_ylabel("", fontsize=11)
+
+    # FEL positive
+    if "significant" in fel.columns and "omega" in fel.columns:
+        pos_sites = fel.loc[(fel["significant"]) & (fel["omega"] > 1), "site"]
+        neg_sites = fel.loc[(fel["significant"]) & (fel["omega"] < 1), "site"]
+        ax_rug.vlines(pos_sites, 2.1, 2.9,
+                      color=PALETTE["FEL"], linewidth=1.2, alpha=0.7)
+        ax_rug.vlines(neg_sites, 0.1, 0.9,
+                      color="#aec7e8", linewidth=1.0, alpha=0.6)
+
+    # MEME episodic
+    if "episodic" in meme.columns:
+        ep_sites = meme.loc[meme["episodic"], "site"]
+        ax_rug.vlines(ep_sites, 1.1, 1.9,
+                      color=PALETTE["MEME"], linewidth=1.2, alpha=0.7)
+
+    # Legend patches
+    rug_patches = [
+        mpatches.Patch(color=PALETTE["FEL"],  label="FEL positive (sig)"),
+        mpatches.Patch(color="#aec7e8",        label="FEL negative (sig)"),
+        mpatches.Patch(color=PALETTE["MEME"],  label="MEME episodic"),
+    ]
+    ax_rug.legend(handles=rug_patches, frameon=False,
+                  fontsize=9, loc="upper right", ncol=3)
+    ax_rug.set_xlabel("Codon site", fontsize=13)
+
+    # ── Final formatting ──────────────────────────────────────────────────
+
+    for ax in [ax_omega, ax_fubar, ax_meme, ax_rug]:
+        ax.set_xlim(sites.min(), sites.max())
+        sns.despine(ax=ax, bottom=(ax != ax_rug))
+
+    plt.savefig(outpath, dpi=300, bbox_inches="tight")
     plt.close()
+    print(f"[OK] Saved: {outpath}")
 
 
 # ------------------ SUMMARY ------------------
 
 def generate_summary(fel, meme, fubar, absrel, outpath):
 
-    fel_p = find_column(fel, ["p"])
-    meme_p = find_column(meme, ["p"])
-    fubar_pos = find_column(fubar, ["prob[alpha<beta]"])
-    fubar_neg = find_column(fubar, ["prob[alpha>beta]"])
+    fel_p    = find_column(fel,  ["pvalue", "p"])
+    meme_p   = find_column(meme, ["pvalue", "p"])
+    fubar_pos = find_column(fubar, ["posterior_positive", "prob[alpha<beta]"])
+    fubar_neg = find_column(fubar, ["posterior_negative", "prob[alpha>beta]"])
 
     summary = {}
 
-    # FEL (use omega now)
     if "omega" in fel.columns and fel_p:
         sig = fel[fel[fel_p] < 0.05]
         summary["FEL_positive_sites"] = (sig["omega"] > 1).sum()
         summary["FEL_negative_sites"] = (sig["omega"] < 1).sum()
 
-    # MEME
     if meme_p:
         summary["MEME_sites"] = (meme[meme_p] < 0.05).sum()
 
-    # FUBAR
     if fubar_pos:
         summary["FUBAR_positive_sites"] = (fubar[fubar_pos] > 0.9).sum()
-
     if fubar_neg:
         summary["FUBAR_negative_sites"] = (fubar[fubar_neg] > 0.9).sum()
 
-    # aBSREL
     if "significant" in absrel.columns:
         summary["aBSREL_branches"] = absrel["significant"].sum()
 
     pd.DataFrame([summary]).to_csv(outpath, index=False)
+    print(f"[OK] Summary: {outpath}")
 
 
 # ------------------ ITOL ------------------
-
 def generate_itol(absrel, outpath):
-
     with open(outpath, "w") as f:
-        f.write("DATASET_COLORSTRIP\n")
+        # Header
+        f.write("DATASET_STYLE\n")
         f.write("SEPARATOR TAB\n")
         f.write("DATASET_LABEL\taBSREL\n")
         f.write("COLOR\t#ff0000\n\n")
+
+        # Data section
         f.write("DATA\n")
 
         for _, row in absrel.iterrows():
             if row.get("significant", False):
-                f.write(f"{row['branch']}\t#ff0000\n")
+                branch_id = row["branch"]
 
+                # ID, TYPE, WHAT, COLOR, WIDTH, STYLE
+                f.write(f"{branch_id}\tbranch\tnode\t#ff0000\t3\tnormal\n")
 
 # ------------------ MAIN ------------------
 
 def main():
     parser = argparse.ArgumentParser()
-
     parser.add_argument("--fel")
     parser.add_argument("--slac")
     parser.add_argument("--meme")
@@ -234,45 +252,33 @@ def main():
     parser.add_argument("--absrel")
     parser.add_argument("--outdir")
     parser.add_argument("--prefix")
-
     args = parser.parse_args()
 
-    outdir = Path(args.outdir)
-    plot_dir = outdir / "plots"
+    outdir      = Path(args.outdir)
+    plot_dir    = outdir / "plots"
     summary_dir = outdir / "summary"
-    itol_dir = outdir / "itol"
+    itol_dir    = outdir / "itol"
 
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    summary_dir.mkdir(parents=True, exist_ok=True)
-    itol_dir.mkdir(parents=True, exist_ok=True)
+    for d in [plot_dir, summary_dir, itol_dir]:
+        d.mkdir(parents=True, exist_ok=True)
 
-    # Load data
-    fel = pd.read_csv(args.fel)
-    slac = pd.read_csv(args.slac) if args.slac else None
-    meme = pd.read_csv(args.meme)
-    fubar = pd.read_csv(args.fubar)
+    fel    = pd.read_csv(args.fel)
+    slac   = pd.read_csv(args.slac) if args.slac else None
+    meme   = pd.read_csv(args.meme)
+    fubar  = pd.read_csv(args.fubar)
     absrel = pd.read_csv(args.absrel)
 
-    # Plots
     plot_selection(
         fel, slac, meme, fubar,
         plot_dir / f"{args.prefix}_selection_plot.png",
         args.prefix
     )
 
-    plot_manhattan(
-        meme,
-        plot_dir / f"{args.prefix}_manhattan.png",
-        args.prefix
-    )
-
-    # Summary
     generate_summary(
         fel, meme, fubar, absrel,
         summary_dir / f"{args.prefix}_summary.csv"
     )
 
-    # iTOL
     generate_itol(
         absrel,
         itol_dir / f"{args.prefix}_absrel.txt"

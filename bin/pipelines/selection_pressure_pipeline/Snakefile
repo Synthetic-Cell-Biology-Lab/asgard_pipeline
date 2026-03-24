@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import glob
 
 PROTEIN = config["protein_name"]
 
@@ -17,9 +18,9 @@ ANNOT_DIR = f"{SELECTION_DIR}/annotation_subsets"
 rule all:
     input:
         expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
-        expand(f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv", protein=config["PROTEINS"]),
+        expand(f"{SELECTION_DIR}/{{protein}}_main_itol_uploaded.flag", protein=config["PROTEINS"]),
+        
+
 
 
 rule subset_annotations:
@@ -70,7 +71,7 @@ rule filter_length_outliers:
         ffn=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.filtered.ffn",
         plot=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.length_distribution.png"
     conda:
-        f"{config.get("env_dir")}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     script:
         "../../units/filter_length_outliers.py"
 
@@ -129,7 +130,7 @@ rule hyphy_fel:
         aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
         tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json"
+        fel=protected(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FEL.json")
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -150,7 +151,7 @@ rule hyphy_meme:
         aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
         tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json"
+        meme=protected(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.MEME.json")
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -172,7 +173,7 @@ rule hyphy_fubar:
         aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
         tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json"
+        fubar=protected(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.FUBAR.json")
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -192,7 +193,7 @@ rule hyphy_absrel:
         aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
         tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json"
+        absrel=protected(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.aBSREL.json")
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -212,7 +213,7 @@ rule hyphy_slac:
         aln=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
         tree=f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile"
     output:
-        slac=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.SLAC.json"
+        slac=protected(f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}.SLAC.json")
     threads: 4
     conda:
         f"{config.get('env_dir')}/phylogeny.yaml"
@@ -238,8 +239,8 @@ rule parse_hyphy:
         fel_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FEL.csv",
         meme_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_MEME.csv",
         fubar_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FUBAR.csv",
-        absrel_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_aBSREL.csv",
-        slac_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_slac.csv"
+        absrel_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_ABSREL.csv",
+        slac_csv=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_SLAC.csv"
     params:
         outdir=f"{SELECTION_DIR}/{{protein}}/tests"
     
@@ -263,8 +264,8 @@ rule analyze_hyphy:
         fel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FEL.csv",
         meme=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_MEME.csv",
         fubar=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_FUBAR.csv",
-        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_aBSREL.csv",
-        slac=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_slac.csv"
+        absrel=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_ABSREL.csv",
+        slac=f"{SELECTION_DIR}/{{protein}}/tests/{{protein}}_SLAC.csv"
     output:
         plot=f"{SELECTION_DIR}/{{protein}}/analysis/plots/{{protein}}_selection_plot.png",
         summary=f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}_summary.csv",
@@ -284,6 +285,80 @@ rule analyze_hyphy:
             --outdir {params.outdir} \
             --prefix {wildcards.protein}
         """
+
+
+
+rule merge_protein_metadata:
+    input:
+        fasta=f"{SELECTION_DIR}/{{protein}}/sequences/{{protein}}.codon.trimmed.fna",
+        annotation=config.get("PROTEIN_FILE", "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"),
+        metadata=config.get("GENOME_FILE", "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv")
+    output:
+        f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}.merged.csv"
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    shell:
+        """
+        python bin/units/merge_protein_metadata.py \
+            --fasta {input.fasta} \
+            --annotation {input.annotation} \
+            --metadata {input.metadata} \
+            --output {output}
+        """
+
+
+rule table2itol:
+    input:
+        annot = f"{SELECTION_DIR}/{{protein}}/analysis/summary/{{protein}}.merged.csv"
+    output:
+        annotation_dir = directory(f"{SELECTION_DIR}/{{protein}}/analysis/itol_annotation"),    
+        done_annot = touch(f"{SELECTION_DIR}/{{protein}}/analysis/annotation.done.flag")
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+    shell:
+        """
+        mkdir -p {output.annotation_dir}
+
+        Rscript bin/units/table2itol.R \
+            -i locus_tag \
+            -l locus_tag \
+            -s "," \
+            -D {output.annotation_dir} \
+            {input.annot}
+        """
+
+
+rule upload_main_tree_to_itol:
+    input:
+        tree = f"{SELECTION_DIR}/{{protein}}/tree/{{protein}}.tree.treefile",
+        done_annot = f"{SELECTION_DIR}/{{protein}}/analysis/annotation.done.flag",
+        colorstrip = f"{SELECTION_DIR}/{{protein}}/analysis/itol/{{protein}}_absrel.txt",
+        default = lambda wildcards: config.get("default_annotation", []),
+        annotation_files = lambda wildcards: sorted(
+            glob.glob(f"{SELECTION_DIR}/{wildcards.protein}/analysis/itol_annotation/*.txt")
+        )
+    output:
+        tree_ids = f"{SELECTION_DIR}/{{protein}}_main_itol_uploaded.flag"
+    params:
+        project = config.get("itol_project", "Asgard"),
+        tree_name = f"mafft_{config.get('run_id', 'run')}_{{protein}}"
+    shell:
+        """
+        bash bin/units/itol_upload.sh \
+            {input.tree} \
+            {params.project} \
+            {params.tree_name} \
+            {output.tree_ids} \
+            {input.colorstrip} \
+            {input.default} \
+            {input.annotation_files:q}
+        """
+
+
+
+
+
+
 
 
 
