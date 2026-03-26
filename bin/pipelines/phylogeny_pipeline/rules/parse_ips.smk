@@ -30,12 +30,15 @@ rule merge_file:
     input:
         protein_file = config["protein_file"],
         fasta = config["fasta_file"],
-        protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids"
+        protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
+        genome_file = config['genome_file'],
+        
     output:
         outfasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
         protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
     params:
-        remove_hypotheticals = config.get("remove_hypotheticals", False)
+        remove_hypotheticals = config.get("remove_hypotheticals", False),
+        protein_name = config['protein_name']
     conda:
         f"{config['env_dir']}/Reg.yaml"
     message:

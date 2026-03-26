@@ -1,5 +1,35 @@
 import os
 
+########################################
+# Sequence Length Histogram
+########################################
+
+rule length_histogram:
+    input:
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
+    output:
+        plot = f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
+        split_dir = directory(f"{EXPLORATION_DIR}/{PROTEIN}_length_bins")
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    message:
+        """
+        ==========================================
+        📊 Sequence Length Analysis + Binning
+        ==========================================
+        """
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/plot_lengths.py \
+            {input.fasta} \
+            {output.plot} \
+            {output.split_dir}
+        """
+
+
+
+
+
 
 ############################################
 # Exploratory FastTree
@@ -48,6 +78,45 @@ rule itol_colorstrip:
         """
 
 
+rule df_for_annotation:
+    input: 
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta", 
+        protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+    output:
+        annot_csv = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/get_annotation_csv.py \
+                {input.fasta} \
+                {input.protein_csv} \
+                {output.annot_csv}        
+        
+        """
+
+rule table2itol:
+    input:
+        annot = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
+    output:
+        annotation_dir = directory(f"{PHYLO_DIR}/annotation"),    
+        done_annot = touch(f"{PHYLO_DIR}/annotation.done.flag")
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+    shell:
+        """
+        mkdir -p {output.annotation_dir}
+
+        Rscript {CURRENT_DIR}/bin/units/table2itol.R \
+            -i locus_tag \
+            -l locus_tag \
+            -s "," \
+            -D {output.annotation_dir} \
+            {input.annot}
+        """
+
+
+
 ########################################
 # Upload to iTOL
 ########################################
@@ -56,7 +125,11 @@ rule upload_to_itol:
     input:
         tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
         colorstrip = f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt",
-        default = lambda wildcards: config.get("default_annotation", "")
+        default = lambda wildcards: config.get("default_annotation", []),
+        annotation_files = lambda wildcards: sorted(
+            glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
+        ),
+        marker = f"{PHYLO_DIR}/annotation.done.flag"
     output:
         tree_ids = f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag"
     params:
@@ -70,7 +143,8 @@ rule upload_to_itol:
             {params.tree_name} \
             {output.tree_ids} \
             {input.colorstrip} \
-            {input.default}
+            {input.default} \
+            {input.annotation_files:q}
         """
 
 ########################################
@@ -110,3 +184,45 @@ rule review_gate:
         print(f"Then run: touch {output.marker}\n")
 
         raise SystemExit(1)
+
+rule make_rev_csv:
+    input:
+        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
+        marker = f"{RESULT_DIR}/REVIEW_DONE.flag",
+        unr_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+    output:
+        rev_csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
+    
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    run:
+        import pandas as pd
+
+        # ── Extract locus_tags from FASTA ───────────────────────
+        locus_tags = set()
+
+        with open(input.rev_fasta) as f:
+            for line in f:
+                if line.startswith(">"):
+                    locus = line[1:].strip().split()[0]
+                    locus_tags.add(locus)
+
+        # ── Load CSV ────────────────────────────────────────────
+        df = pd.read_csv(input.unr_csv)
+
+        if "locus_tag" not in df.columns:
+            raise ValueError("Column 'locus_tag' not found in CSV")
+
+        # Clean just in case
+        df["locus_tag"] = df["locus_tag"].astype(str).str.strip()
+
+        # ── Filter ──────────────────────────────────────────────
+        filtered = df[df["locus_tag"].isin(locus_tags)]
+
+        # ── Save ────────────────────────────────────────────────
+        filtered.to_csv(output.rev_csv, index=False)
+
+        # ── Debug (optional but useful) ─────────────────────────
+        print(f"Extracted {len(locus_tags)} locus tags")
+        print(f"Matched {len(filtered)} rows")
