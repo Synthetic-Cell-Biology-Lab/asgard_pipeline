@@ -25,6 +25,8 @@ import sys
 FASTA_FILE = snakemake.input.fasta
 CSV_FILE = snakemake.input.protein_file
 IDS_FILE = snakemake.input.protein_ids
+GENOME_FILE = snakemake.input.genome_file
+PROTEIN = snakemake.params.protein_name
 
 OUT_FASTA = snakemake.output.outfasta
 OUT_CSV = snakemake.output.protein_csv
@@ -90,15 +92,21 @@ if REMOVE_HYPOTHETICALS:
 print("📊 Filtering CSV file...")
 
 df = pd.read_csv(CSV_FILE)
+gf = pd.read_csv(GENOME_FILE)
 
+merged = pd.merge(gf, df, on="genome_file", how="inner")
 # Assumes column name is 'protein'
 if "locus_tag" not in df.columns:
     sys.exit("❌ CSV does not contain a 'locus_tag' column.")
 
-filtered_df = df[df["locus_tag"].isin(protein_ids)]
+filtered_df = merged[merged["locus_tag"].isin(protein_ids)]
 
 if filtered_df.empty:
     print("⚠️ No matching rows in CSV.")
+
+filtered_df['Manual_annotation'] = PROTEIN
+
+
 
 filtered_df.to_csv(OUT_CSV, index=False)
 

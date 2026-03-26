@@ -222,10 +222,19 @@ p <- p +
   )
 
 # color scales
-p <- p +
-  scale_fill_manual(values  = c("#009E73", "#E69F00")) +
-  scale_color_manual(values = c("#009E73", "#E69F00")) +
-  guides(color = "none")
+if(dodge){
+  # dual comparison → keep manual colors
+  p <- p +
+    scale_fill_manual(values = c("#009E73", "#E69F00")) +
+    scale_color_manual(values = c("#009E73", "#E69F00")) +
+    guides(color = "none")
+} else {
+  # multi-class taxa → dynamic palette
+  p <- p +
+    scale_fill_viridis_d(option = "plasma") +
+    scale_color_viridis_d(option = "plasma") +
+    guides(color = "none")
+}
 
 # data-driven y-axis zoom
 p <- p +

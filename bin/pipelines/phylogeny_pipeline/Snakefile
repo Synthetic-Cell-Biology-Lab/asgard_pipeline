@@ -25,11 +25,15 @@ RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
 EXPLORATION_DIR = f"{RESULT_DIR}/extraction_exploration"
 PHYLO_DIR = f"{RESULT_DIR}/final_phylogeny"
 SSN_DIR =  f"{RESULT_DIR}/Sequence_similarity_network"
+LOG_DIR = f"{RESULT_DIR}/Logs"
+BENCHMARK_DIR = f"{RESULT_DIR}/benchmark_dir"
 
 # Create directories
 os.makedirs(RESULT_DIR, exist_ok=True)
 os.makedirs(EXPLORATION_DIR, exist_ok=True)
 os.makedirs(PHYLO_DIR, exist_ok = True)
+os.makedirs(LOG_DIR, exist_ok = True)
+os.makedirs(BENCHMARK_DIR, exist_ok = True)
 
 # Include rule definitions
 
@@ -51,7 +55,9 @@ include: "rules/ssn.smk"
 FINAL_TARGETS = [
     f"{RESULT_DIR}/REVIEW_DONE.flag",
     f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
-    f"{RESULT_DIR}/phylogeny_pipeline.log"
+    f"{RESULT_DIR}/phylogeny_pipeline.log",
+    f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
+    expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else []
 ]
 
 # optional iTOL upload
@@ -68,7 +74,7 @@ FINAL_TARGETS.extend(
 
 FINAL_TARGETS.extend(
     expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.png",
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.png",
         level=config.get("PLOT_TAXON_LEVELS")
     )
 )
@@ -101,12 +107,12 @@ rule link_log_file:
 ############################################
 
 
-rule protein_copy_heatmap:
+rule protein_copy_heatmap_unreviewed:
     input:
         csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
 
     output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.png"
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.png"
 
     params:
         proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
@@ -132,7 +138,7 @@ rule protein_copy_heatmap:
 
 rule plot_taxa:
     input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
 
     output:
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.png"
@@ -141,6 +147,8 @@ rule plot_taxa:
         y = config.get("PLOT_Y_COLUMN","protein_length"),
         filter_col = config.get("PLOT_FILTER_COLUMN", "Manual_annotation"),
         filter_vals = config.get("PLOT_FILTER_VALS", ['FtsZ1','FtsZ2','CetZ','Tubulin']),
+        ymin = config['ymin'],
+        ymax = config['ymax'], 
         dual_vals = config.get("PLOT_DUAL_PROTEINS", ['FtsZ1','FtsZ2']),
         dual_arg = lambda wildcards: (
             "--dual " + " ".join(config.get("PLOT_DUAL_PROTEINS", []))
@@ -163,7 +171,35 @@ rule plot_taxa:
         {wildcards.level} \
         {output} \
         --filter {params.filter_col} {params.filter_vals:q} \
+        --ymin {params.ymin} --ymax {params.ymax} \
         {params.dual_arg}
+        """
+
+rule protein_copy_heatmap_reviewed:
+    input:
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
+
+    output:
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.png"
+
+    params:
+        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
+
+    wildcard_constraints:
+        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
+    
+    conda: 
+        f"{config['env_dir']}/bio-r.yaml"
+
+    shell:
+        """
+        Rscript {CURRENT_DIR}/bin/units/bubble_heat_map_presence_table.r \
+        {input.csv} \
+        {wildcards.level} \
+        genome_file \
+        Manual_annotation \
+        {output} \
+        --proteins {params.proteins:q}
         """
 
 
@@ -197,43 +233,6 @@ rule run_phylogeny:
             {input.fasta} \
             {params.prefix} \
             {threads}
-        """
-
-rule df_for_annotation:
-    input: 
-        fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta", 
-        protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
-    output:
-        annot_csv = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
-    conda:
-        f"{config['env_dir']}/Reg.yaml"
-    shell:
-        """
-        python {CURRENT_DIR}/bin/units/get_annotation_csv.py \
-                {input.fasta} \
-                {input.protein_csv} \
-                {output.annot_csv}        
-        
-        """
-
-rule table2itol:
-    input:
-        annot = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
-    output:
-        annotation_dir = directory(f"{PHYLO_DIR}/annotation"),    
-        done_annot = touch(f"{PHYLO_DIR}/annotation.done.flag")
-    conda:
-        f"{config['env_dir']}/bio-r.yaml"
-    shell:
-        """
-        mkdir -p {output.annotation_dir}
-
-        Rscript {CURRENT_DIR}/bin/units/table2itol.R \
-            -i locus_tag \
-            -l locus_tag \
-            -s "," \
-            -D {output.annotation_dir} \
-            {input.annot}
         """
 
 
