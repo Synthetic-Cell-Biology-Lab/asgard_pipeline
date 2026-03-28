@@ -1,0 +1,52 @@
+import yaml
+import os
+
+configfile: "config.yaml"
+
+OUTDIR = config["output_dir"]
+
+
+ORGS = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
+
+rule all:
+    input:
+        expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS),
+        expand(f"{OUTDIR}/combined/all_{{org}}_proteomes.faa", org=ORGS)
+
+
+rule download_genomes:
+    output:
+        flag = f"{OUTDIR}/{{org}}/done.flag"
+    params:
+        taxon = lambda wc: next(o for o in config["organisms"] if o["name"].replace(" ", "_").lower() == wc.org)["taxon"],
+        level = lambda wc: ",".join(next(o for o in config["organisms"] if o["name"].replace(" ", "_").lower() == wc.org)["assembly_level"]),
+        refseq = lambda wc: "--reference" if next(o for o in config["organisms"] if o["name"].replace(" ", "_").lower() == wc.org)["refseq_only"] else ""
+    conda:
+        f"{config.get("env_dir")}/Reg.yaml"
+    shell:
+        """
+        mkdir -p {OUTDIR}/{wildcards.org}
+        
+        datasets download genome taxon "{params.taxon}" \
+            --assembly-level {params.level} \
+            {params.refseq} \
+            --include genome,protein,gff3 \
+            --filename {OUTDIR}/{wildcards.org}/dataset.zip
+        
+        unzip -o {OUTDIR}/{wildcards.org}/dataset.zip -d {OUTDIR}/{wildcards.org}/
+
+        touch {output.flag}
+        """
+
+
+rule collect_proteomes:
+    input:
+        expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS)
+    output:
+        f"{OUTDIR}/combined/all_{{org}}_proteomes.faa"
+    shell:
+        """
+        mkdir -p {OUTDIR}/combined
+        
+        find {OUTDIR} -name "*.faa" -exec cat {{}} + > {output}
+        """

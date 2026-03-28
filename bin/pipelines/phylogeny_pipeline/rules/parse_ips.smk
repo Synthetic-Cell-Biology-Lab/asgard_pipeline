@@ -20,7 +20,7 @@ rule parse_ips:
         ===============================
         """
     script:
-        f"{CURRENT_DIR}/bin/units/parse_ips.py"
+        f"{CURRENT_DIR}/bin/units/parse_ips2.py"
 
 ########################################
 # Extract FASTA + CSV

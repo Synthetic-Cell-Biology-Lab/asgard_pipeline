@@ -22,15 +22,15 @@ if not search_string and not rstring:
 
 
 # -------------------------------
-# Build SQL condition on sig_disc
+# Build SQL condition on sig_desc
 # -------------------------------
 
 if search_string:
     print(f"🔎 Using LIKE search: {search_string}")
-    condition = f"LOWER(sig_disc) LIKE '%{search_string.lower()}%'"
+    condition = f"LOWER(sig_desc) LIKE '%{search_string.lower()}%'"
 elif rstring:
     print(f"🔎 Using REGEX search: {rstring}")
-    condition = f"regexp_matches(sig_disc, '{rstring}')"
+    condition = f"regexp_matches(sig_desc, '{rstring}')"
 
 
 # -------------------------------
@@ -74,11 +74,11 @@ if n_proteins == 0:
 print("📐 Fetching full Pfam domain architecture for matching proteins...")
 con.execute("""
     CREATE TABLE protein_domains AS
-    SELECT i.protein, i.sig_disc
+    SELECT i.protein, i.sig_desc
     FROM interpro i
     INNER JOIN matching_proteins m ON i.protein = m.protein
     WHERE i.analysis = 'Pfam'
-      AND i.sig_disc IS NOT NULL
+      AND i.sig_desc IS NOT NULL
 """)
 
 
@@ -89,7 +89,7 @@ con.execute("""
 domains = [
     row[0]
     for row in con.execute(
-        "SELECT DISTINCT sig_disc FROM protein_domains ORDER BY sig_disc"
+        "SELECT DISTINCT sig_desc FROM protein_domains ORDER BY sig_desc"
     ).fetchall()
 ]
 
@@ -103,7 +103,7 @@ print(f"  → {n_domains} unique Pfam domains found across matching proteins")
 # -------------------------------
 
 pivot_cols = ",\n        ".join(
-    f"COUNT(CASE WHEN sig_disc = {duckdb.typing.VARCHAR.cast(d)!r} THEN 1 END) "
+    f"COUNT(CASE WHEN sig_desc = {duckdb.typing.VARCHAR.cast(d)!r} THEN 1 END) "
     f"AS \"{d}\""
     for d in domains
 )
@@ -111,7 +111,7 @@ pivot_cols = ",\n        ".join(
 # duckdb doesn't have a clean literal quoting helper exposed, use parameter binding
 # via a formatting approach — domain names go into the SQL as string literals
 pivot_cols = ",\n        ".join(
-    f"COUNT(CASE WHEN sig_disc = '{d.replace(chr(39), chr(39)*2)}' THEN 1 END) "
+    f"COUNT(CASE WHEN sig_desc = '{d.replace(chr(39), chr(39)*2)}' THEN 1 END) "
     f'AS "{d}"'
     for d in domains
 )
