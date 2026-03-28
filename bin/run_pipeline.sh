@@ -31,7 +31,6 @@ EOF
 }
 
 PIPELINE=$(read_config_value pipeline)
-PROTEIN=$(read_config_value protein_name)
 LOG_DIR=$(read_config_value log_dir)
 RUN_REASON=$(read_config_value reason)
 CORES=$(read_config_value cores)
@@ -47,10 +46,6 @@ if [ -z "$PIPELINE" ]; then
   exit 1
 fi
 
-if [ -z "$PROTEIN" ]; then
-  echo "❌ 'protein_name' not defined in config."
-  exit 1
-fi
 
 SNAKEFILE="${WORKING_DIR}/bin/pipelines/${PIPELINE}/Snakefile"
 
@@ -73,7 +68,7 @@ if [ -z "$RUN_ID" ]; then
     RUN_ID=$(date +"%Y%m%d_%H%M%S")
 fi
 
-LOG_FILE="${LOG_DIR}/${PIPELINE}_${PROTEIN}_${RUN_ID}.log"
+LOG_FILE="${LOG_DIR}/${PIPELINE}_${RUN_ID}.log"
 
 # -------------------------------
 # Log header
@@ -83,7 +78,6 @@ LOG_FILE="${LOG_DIR}/${PIPELINE}_${PROTEIN}_${RUN_ID}.log"
 echo "=============================================="
 echo "🚀 Pipeline Execution Log"
 echo "Pipeline: $PIPELINE"
-echo "Protein: $PROTEIN"
 echo "Config: $CONFIG_FILE"
 echo "Start Time: $(date)"
 echo "Cores: $CORES"
@@ -122,7 +116,6 @@ snakemake \
   --cores "$CORES" \
   --printshellcmds \
   --verbose \
-  --conda-frontend mamba \
   2>&1 | tee -a "$LOG_FILE"
 
 

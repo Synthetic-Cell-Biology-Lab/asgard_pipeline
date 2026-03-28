@@ -10,8 +10,8 @@ dependencies:
   - jupyter
   - notebook
   - hmmer
-  - datasets
-  - ncbi-datasets-cli
+  - datasets 
+  - ncbi-datasets-cli >= 18.22
   - mamba
   - seaborn
   - yaml
