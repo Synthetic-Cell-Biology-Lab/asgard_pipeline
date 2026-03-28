@@ -48,7 +48,7 @@ else:
     sys.exit()
 
 include: "rules/exploration.smk"
-include: "rules/ssn.smk"
+include: "rules/ssn_3.smk"
 ########################################
 # Final Target
 ########################################
@@ -57,7 +57,8 @@ FINAL_TARGETS = [
     f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
     f"{RESULT_DIR}/phylogeny_pipeline.log",
     f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
-    expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else []
+    expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else [],
+    f"{SSN_DIR}/{PROTEIN}.clusters.csv"
 ]
 
 # optional iTOL upload
@@ -82,8 +83,7 @@ FINAL_TARGETS.extend(
 FINAL_TARGETS.extend(
         [f"{SSN_DIR}/{PROTEIN}.nr.fasta",
         f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
-        f"{SSN_DIR}/{PROTEIN}.edges.tsv",
-        f"{SSN_DIR}/{PROTEIN}.nodes.tsv"
+        f"{SSN_DIR}/{PROTEIN}.clusters.csv"
         ]
     )
 
