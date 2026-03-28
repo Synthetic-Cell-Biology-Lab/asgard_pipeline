@@ -10,7 +10,8 @@ from Bio import SeqIO
 
 fasta_file = sys.argv[1]
 protein_csv = sys.argv[2]
-output_csv = sys.argv[3]
+cluster_csv = sys.argv[3]
+output_csv = sys.argv[4]
 
 ############################################
 # Extract protein IDs from FASTA
@@ -62,10 +63,18 @@ if missing_cols:
 
 filtered = filtered[taxonomy_columns]
 
+print("[INFO] Loading cluster table...")
+
+cluster_df = pd.read_csv(cluster_csv)
+
+print(f"[INFO] Cluster entries: {len(cluster_df)}")
+
+merged = pd.merge(filtered, cluster_df, left_on='locus_tag', right_on="id", how="left")
+
 ############################################
 # Write output
 ############################################
 
-filtered.to_csv(output_csv, index=False)
+merged.to_csv(output_csv, index=False)
 
 print(f"[INFO] Annotation table written → {output_csv}")

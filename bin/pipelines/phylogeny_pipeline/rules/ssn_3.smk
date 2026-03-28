@@ -8,6 +8,7 @@ rule ssn_cdhit:
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
     output:
         nr = f"{SSN_DIR}/{PROTEIN}.nr.fasta",
+        clstr = f"{SSN_DIR}/{PROTEIN}.nr.fasta.clstr",
     params:
         identity = config.get("SSN_IDENTITY", 0.98),
     threads: config.get("SSN_CORES", config.get("cores", 16))
@@ -186,12 +187,14 @@ rule ssn_cluster:
     input:
         nodes = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
         nr    = f"{SSN_DIR}/{PROTEIN}.nr.fasta",
+        clstr = f"{SSN_DIR}/{PROTEIN}.nr.fasta.clstr",
         edges = expand(
             f"{SSN_DIR}/{PROTEIN}.bs{{bitscore}}.edges.tsv",
             bitscore=BITSCORES
         )
     output:
         csv       = f"{SSN_DIR}/{PROTEIN}.clusters.csv",
+        expanded_csv       = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
         fasta_dir = directory(f"{SSN_DIR}/cluster_fastas"),
     params:
         bitscores = ",".join(str(b) for b in BITSCORES)
@@ -210,6 +213,7 @@ rule ssn_cluster:
             --nodes     {input.nodes}      \
             --fasta     {input.nr}         \
             --edges     {input.edges}      \
+            --clstr     {input.clstr}      \
             --bitscores {params.bitscores} \
             --out-csv   {output.csv}       \
             --out-dir   {output.fasta_dir} \
@@ -232,6 +236,7 @@ rule ssn_network:
         ),
         nodes     = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
         clusters  = f"{SSN_DIR}/{PROTEIN}.clusters.csv",
+        expanded_csv       = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
         fasta_dir = f"{SSN_DIR}/cluster_fastas",
         tax_annotation = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
 
@@ -251,7 +256,7 @@ if config.get("copy_to_windows", False):
                 bitscore=BITSCORES
             ),
             nodes     = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
-            clusters  = f"{SSN_DIR}/{PROTEIN}.clusters.csv",
+            clusters  = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
             fasta_dir = f"{SSN_DIR}/cluster_fastas",
             tax_annotation = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
         output:
