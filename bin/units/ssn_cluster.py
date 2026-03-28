@@ -111,7 +111,6 @@ def connected_components(edge_file: str) -> dict[str, int]:
             uf.union(a, b)
     return uf.components()
 
-
 def write_fasta(path: str, members: list[str], sequences: dict[str, tuple[str, str]]) -> None:
     with open(path, "w") as fh:
         for node in members:
@@ -123,7 +122,34 @@ def write_fasta(path: str, members: list[str], sequences: dict[str, tuple[str, s
             for i in range(0, len(seq), 80):
                 fh.write(seq[i : i + 80] + "\n")
 
+def load_cdhit_clstr(clstr_path: str) -> dict[str, str]:
+    """
+    Parse a CD-HIT .clstr file.
+    Returns {member_id: representative_id} for all non-representative members.
+    The representative (marked with *) maps to itself and is excluded
+    since it's already in the clusters CSV.
+    """
+    mapping: dict[str, str] = {}
+    current_rep: str | None = None
 
+    with open(clstr_path) as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith(">Cluster"):
+                current_rep = None
+                continue
+
+            # Extract locus tag from e.g. "0  1059aa, >OFINAIFI_01857... *"
+            seq_id = line.split(">")[1].split("...")[0]
+
+            if line.endswith("*"):
+                current_rep = seq_id
+            else:
+                # non-representative member — map to rep
+                if current_rep is not None:
+                    mapping[seq_id] = current_rep
+
+    return mapping
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
@@ -133,15 +159,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--nodes",     required=True, help="nodes.tsv from ssn_filter")
     p.add_argument("--fasta",     required=True, help="NR FASTA from ssn_cdhit")
     p.add_argument("--edges",     required=True, nargs="+", help="one edge TSV per bitscore level")
+    p.add_argument("--clstr", required=True, help="CD-HIT .clstr file")
     p.add_argument("--bitscores", required=True, help="comma-separated bitscore values matching --edges order")
     p.add_argument("--out-csv",   required=True, help="output clusters CSV")
     p.add_argument("--out-dir",   required=True, help="output directory for per-cluster FASTAs")
     return p.parse_args()
 
-
 def main() -> None:
     args = parse_args()
-    bitscores = [b.strip() for b in args.bitscores.split(",")]
+    bitscores = [str(int(float(b.strip()))) for b in args.bitscores.split(",")]
 
     if len(bitscores) != len(args.edges):
         log.error(
@@ -160,6 +186,10 @@ def main() -> None:
     sequences = load_fasta(args.fasta)
     log.info("  %d sequences", len(sequences))
 
+    log.info("Loading CD-HIT cluster file from %s", args.clstr)
+    clstr_mapping = load_cdhit_clstr(args.clstr)
+    log.info("  %d sequences collapsed into representatives", len(clstr_mapping))
+
     # ── Connected components per bitscore ─────────────────────────────────────
 
     bs_mappings: dict[str, dict[str, int]] = {}
@@ -170,20 +200,56 @@ def main() -> None:
         n_connected = len(bs_mappings[bs])
         log.info("  %d clusters, %d connected nodes", n_clusters, n_connected)
 
-    # ── Write clusters CSV ────────────────────────────────────────────────────
+    # ── Write clusters CSV (representatives only) ─────────────────────────────
 
     os.makedirs(os.path.dirname(args.out_csv) or ".", exist_ok=True)
     log.info("Writing clusters CSV -> %s", args.out_csv)
 
     fieldnames = ["id"] + [f"cluster_bs{bs}" for bs in bitscores]
+
+    rep_rows: dict[str, dict] = {}
+    for node in all_nodes:
+        row: dict[str, str] = {"id": node}
+        for bs in bitscores:
+            label = bs_mappings[bs].get(node, 0)
+            row[f"cluster_bs{bs}"] = "singleton" if label == 0 else f"clu{label}"
+        rep_rows[node] = row
+
     with open(args.out_csv, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
-        for node in all_nodes:
-            row: dict[str, str | int] = {"id": node}
-            for bs in bitscores:
-                row[f"cluster_bs{bs}"] = bs_mappings[bs].get(node, 0)
+        for row in rep_rows.values():
             writer.writerow(row)
+
+    # ── Write expanded CSV (representatives + collapsed members) ──────────────
+
+    expanded_path = args.out_csv.replace(".csv", ".expanded.csv")
+    log.info("Writing expanded clusters CSV -> %s", expanded_path)
+
+    missing_rep = 0
+    expanded_rows: list[dict] = list(rep_rows.values())
+
+    for member, rep in sorted(clstr_mapping.items()):
+        if rep not in rep_rows:
+            log.warning(
+                "Representative %s not found in clusters CSV — skipping %s", rep, member
+            )
+            missing_rep += 1
+            continue
+        new_row = dict(rep_rows[rep])
+        new_row["id"] = member
+        expanded_rows.append(new_row)
+
+    if missing_rep:
+        log.warning("  %d members skipped due to missing representative", missing_rep)
+
+    with open(expanded_path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(expanded_rows)
+
+    log.info("  %d total rows (%d representatives + %d members)",
+             len(expanded_rows), len(rep_rows), len(expanded_rows) - len(rep_rows))
 
     # ── Write per-cluster FASTAs ──────────────────────────────────────────────
 
@@ -193,17 +259,18 @@ def main() -> None:
         bs_dir = os.path.join(args.out_dir, f"bs{bs}")
         os.makedirs(bs_dir, exist_ok=True)
 
-        clusters: dict[int, list[str]] = defaultdict(list)
+        clusters: dict[str, list[str]] = defaultdict(list)
         for node in all_nodes:
             label = bs_mappings[bs].get(node, 0)
-            clusters[label].append(node)
+            cluster_key = "singleton" if label == 0 else f"clu{label}"
+            clusters[cluster_key].append(node)
 
-        for label, members in sorted(clusters.items()):
-            fname = "singletons.fasta" if label == 0 else f"cluster_{label}.fasta"
+        for cluster_key, members in sorted(clusters.items()):
+            fname = "singletons.fasta" if cluster_key == "singleton" else f"{cluster_key}.fasta"
             write_fasta(os.path.join(bs_dir, fname), members, sequences)
 
-        n_real = sum(1 for l in clusters if l != 0)
-        n_singletons = len(clusters.get(0, []))
+        n_real = sum(1 for k in clusters if k != "singleton")
+        n_singletons = len(clusters.get("singleton", []))
         log.info("  bs%s: %d clusters, %d singletons", bs, n_real, n_singletons)
 
     log.info("Cluster step completed successfully.")
@@ -211,3 +278,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

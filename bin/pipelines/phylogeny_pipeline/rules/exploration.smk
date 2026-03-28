@@ -81,7 +81,8 @@ rule itol_colorstrip:
 rule df_for_annotation:
     input: 
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta", 
-        protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+        protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
+        cluster_csv = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
     output:
         annot_csv = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
     conda:
@@ -91,6 +92,7 @@ rule df_for_annotation:
         python {CURRENT_DIR}/bin/units/get_annotation_csv.py \
                 {input.fasta} \
                 {input.protein_csv} \
+                {input.cluster_csv} \
                 {output.annot_csv}        
         
         """
@@ -123,28 +125,32 @@ rule table2itol:
 
 rule upload_to_itol:
     input:
-        tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
-        colorstrip = f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt",
-        default = lambda wildcards: config.get("default_annotation", []),
-        annotation_files = lambda wildcards: sorted(
+        tree        = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
+        colorstrip  = f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt",
+        annot_files = lambda wildcards: sorted(
             glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
         ),
-        marker = f"{PHYLO_DIR}/annotation.done.flag"
+        default     = lambda wildcards: config.get("default_annotation", []),
+        marker      = f"{PHYLO_DIR}/annotation.done.flag",
     output:
         tree_ids = f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag"
     params:
-        project = config.get("itol_project", "Asgard"),
-        tree_name = f"fast_{config.get('run_id', 'run')}_{PROTEIN}"
+        project   = config.get("itol_project", "Asgard"),
+        tree_name = f"fast_{config.get('run_id', 'run')}_{PROTEIN}",
+        # build the full annotation list at params time so it's one clean variable
+        all_annots = lambda wildcards, input: (
+            sorted(glob.glob(f"{PHYLO_DIR}/annotation/*.txt"))
+            + ([input.colorstrip])
+            + (input.default if isinstance(input.default, list) else [input.default])
+        )
     shell:
         """
         bash {CURRENT_DIR}/bin/units/itol_upload.sh \
-            {input.tree} \
-            {params.project} \
-            {params.tree_name} \
-            {output.tree_ids} \
-            {input.colorstrip} \
-            {input.default} \
-            {input.annotation_files:q}
+            {input.tree}        \
+            {params.project}    \
+            {params.tree_name}  \
+            {output.tree_ids}   \
+            {params.all_annots:q}
         """
 
 ########################################
