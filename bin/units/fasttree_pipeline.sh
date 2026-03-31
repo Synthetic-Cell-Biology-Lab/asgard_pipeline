@@ -24,8 +24,13 @@ echo "=============================================="
 
 echo "🧬 Running MAFFT..."
 
-mafft --auto --thread "$THREADS" "$INPUT_FASTA" \
-    > "${PREFIX}.aligned.fasta"
+echo "Running FAMSA2 alignment..."
+
+famsa -t "$THREADS" \
+      "$INPUT_FASTA" \
+      "${PREFIX}.aligned.fasta" 
+
+echo "Alignment complete → ${PREFIX}.aligned.fasta"
 
 ############################################
 # 2️⃣ FastTree
