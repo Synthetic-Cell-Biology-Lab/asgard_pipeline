@@ -107,4 +107,4 @@ plt.savefig(output, bbox_inches="tight")
 plt.close()
 
 
-df[["Length", "quantile_bin"]].to_csv("length_bins.csv", index=False)
+df[["Length", "quantile_bin"]].to_csv(os.path.join(split_dir, "length_bins.csv"), index=False)

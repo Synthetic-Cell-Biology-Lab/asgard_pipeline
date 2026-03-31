@@ -25,7 +25,7 @@ if [ ! -f "$INPUT_FASTA" ]; then
 fi
 
 echo "=============================================="
-echo "🌳 PHYLOGENY PIPELINE STARTED"
+echo "PHYLOGENY PIPELINE STARTED"
 echo "Input: $INPUT_FASTA"
 echo "Prefix: $PREFIX"
 echo "Threads: $THREADS"
@@ -47,13 +47,13 @@ echo "=============================================="
 # 1️⃣ Alignment (FAMSA2)
 ############################################
 
-echo "🧬 Running FAMSA2 alignment..."
+echo "Running FAMSA2 alignment..."
 
 famsa -t "$THREADS" \
       "$INPUT_FASTA" \
-      "${PREFIX}.aligned.fasta"
+      "${PREFIX}.aligned.fasta" 
 
-echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
+echo "Alignment complete → ${PREFIX}.aligned.fasta"
 
 
 ############################################
@@ -61,25 +61,25 @@ echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 ############################################
 # Preferred over TrimAl for protein datasets
 
-echo "✂️ Running ClipKIT trimming..."
+echo "Running ClipKIT trimming..."
 
 clipkit "${PREFIX}.aligned.fasta" \
     -m kpic-smart-gap \
     -o "${PREFIX}.trimmed.fasta"
 
-echo "✅ Trimming complete → ${PREFIX}.trimmed.fasta"
+echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
 ############################################
 # 3️⃣ Model Selection + 4️⃣ ML Tree (IQ-TREE3)
 ############################################
 
-echo "🌲 Running IQ-TREE3 (Model selection + ML tree)..."
+echo "Running IQ-TREE3 (Model selection + ML tree)..."
 
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m MFP+C10-C60 \
-    -bb 1000 \
+    -m MFP+C10-C60+R \
+    -bb 1000 -bnni \
     -alrt 1000 \
     -redo \
     -pre "${PREFIX}" \
@@ -91,9 +91,9 @@ echo "✅ Phylogeny complete"
 # Summary
 ############################################
 
-echo ""
+
 echo "=============================================="
-echo "🎉 PHYLOGENY PIPELINE COMPLETE"
+echo "PHYLOGENY PIPELINE COMPLETE"
 echo "Final Tree: ${PREFIX}.treefile"
 echo "Bootstrap Tree: ${PREFIX}.contree"
 echo "Log File: ${PREFIX}.log"

@@ -29,8 +29,8 @@ set -euo pipefail
 # Arguments
 # -----------------------------------------------------------------------------
 
-if [ "$#" -ne 5 ]; then
-    echo "Usage: $0 <similarities.tsv> <edges.tsv> <bitscore> <coverage> <evalue>"
+if [ "$#" -ne 6 ]; then
+    echo "Usage: $0 <similarities.tsv> <edges.tsv> <bitscore> <coverage> <evalue> <nodes>"
     exit 1
 fi
 

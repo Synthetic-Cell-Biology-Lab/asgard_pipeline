@@ -83,6 +83,7 @@ rule df_for_annotation:
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta", 
         protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
         cluster_csv = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
+        domains = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv"
     output:
         annot_csv = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
     conda:
@@ -93,6 +94,7 @@ rule df_for_annotation:
                 {input.fasta} \
                 {input.protein_csv} \
                 {input.cluster_csv} \
+                {input.domains} \
                 {output.annot_csv}        
         
         """

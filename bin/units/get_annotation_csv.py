@@ -11,7 +11,8 @@ from Bio import SeqIO
 fasta_file = sys.argv[1]
 protein_csv = sys.argv[2]
 cluster_csv = sys.argv[3]
-output_csv = sys.argv[4]
+domain_tsv = sys.argv[4]
+output_csv = sys.argv[5]
 
 ############################################
 # Extract protein IDs from FASTA
@@ -71,10 +72,14 @@ print(f"[INFO] Cluster entries: {len(cluster_df)}")
 
 merged = pd.merge(filtered, cluster_df, left_on='locus_tag', right_on="id", how="left")
 
+domain_df = pd.read_csv(domain_tsv, sep = "\t")
+
+merged2 = pd.merge(merged,domain_df, left_on = 'locus_tag', right_on = "protein", how = "left")
+
 ############################################
 # Write output
 ############################################
 
-merged.to_csv(output_csv, index=False)
+merged2.to_csv(output_csv, index=False)
 
 print(f"[INFO] Annotation table written → {output_csv}")

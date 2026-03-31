@@ -47,16 +47,15 @@ con.execute(f"""
 
 
 # -------------------------------
-# Step 1: find proteins matching the search term (Pfam only)
+# Step 1: Extract proteins matching the search term (any analysis)
 # -------------------------------
 
-print("🔍 Finding matching proteins...")
+print("🔍 Finding proteins matching the search term...")
 con.execute(f"""
     CREATE TABLE matching_proteins AS
     SELECT DISTINCT protein
     FROM interpro
-    WHERE analysis = 'Pfam'
-      AND {condition}
+    WHERE {condition}
 """)
 
 n_proteins = con.execute("SELECT COUNT(*) FROM matching_proteins").fetchone()[0]
@@ -67,51 +66,71 @@ if n_proteins == 0:
 
 
 # -------------------------------
-# Step 2: get ALL Pfam domains for those proteins
-# (not just the matching domain — we want the full domain architecture)
+# Step 2: Subset the entire interpro table to only matching proteins
 # -------------------------------
 
-print("📐 Fetching full Pfam domain architecture for matching proteins...")
+print("📋 Subsetting full dataset to matching proteins...")
 con.execute("""
-    CREATE TABLE protein_domains AS
-    SELECT i.protein, i.sig_desc
+    CREATE TABLE subset AS
+    SELECT i.*
     FROM interpro i
     INNER JOIN matching_proteins m ON i.protein = m.protein
-    WHERE i.analysis = 'Pfam'
-      AND i.sig_desc IS NOT NULL
 """)
 
+n_rows = con.execute("SELECT COUNT(*) FROM subset").fetchone()[0]
+print(f"  → {n_rows} rows in subset")
+
 
 # -------------------------------
-# Step 3: get the distinct domain names to pivot on
+# Step 3: Extract Pfam domains per protein as a list
 # -------------------------------
 
+print("📐 Extracting Pfam domains per protein...")
+con.execute("""
+    CREATE TABLE pfam_domain_lists AS
+    SELECT
+        protein,
+        list(sig_desc) AS domain_list
+    FROM subset
+    WHERE analysis = 'Pfam'
+      AND sig_desc IS NOT NULL
+    GROUP BY protein
+    ORDER BY protein
+""")
+
+n_pfam_proteins = con.execute("SELECT COUNT(*) FROM pfam_domain_lists").fetchone()[0]
+print(f"  → {n_pfam_proteins} proteins have Pfam annotations")
+
+
+# -------------------------------
+# Step 4: Get all unique Pfam domains for pivot columns
+# -------------------------------
+
+print("🗂️  Collecting unique Pfam domains...")
 domains = [
     row[0]
-    for row in con.execute(
-        "SELECT DISTINCT sig_desc FROM protein_domains ORDER BY sig_desc"
-    ).fetchall()
+    for row in con.execute("""
+        SELECT DISTINCT sig_desc
+        FROM subset
+        WHERE analysis = 'Pfam'
+          AND sig_desc IS NOT NULL
+        ORDER BY sig_desc
+    """).fetchall()
 ]
 
 n_domains = len(domains)
-print(f"  → {n_domains} unique Pfam domains found across matching proteins")
+print(f"  → {n_domains} unique Pfam domains found")
 
 
 # -------------------------------
-# Step 4: pivot — one column per domain, value = count per protein
-# Each CASE counts how many times that domain appears in that protein.
+# Step 5: Pivot — count occurrences of each domain per protein
+# (uses domain_list from Step 3 to count appearances)
 # -------------------------------
 
-pivot_cols = ",\n        ".join(
-    f"COUNT(CASE WHEN sig_desc = {duckdb.typing.VARCHAR.cast(d)!r} THEN 1 END) "
-    f"AS \"{d}\""
-    for d in domains
-)
+print("🔄 Pivoting domain counts...")
 
-# duckdb doesn't have a clean literal quoting helper exposed, use parameter binding
-# via a formatting approach — domain names go into the SQL as string literals
 pivot_cols = ",\n        ".join(
-    f"COUNT(CASE WHEN sig_desc = '{d.replace(chr(39), chr(39)*2)}' THEN 1 END) "
+    f"len(list_filter(domain_list, x -> x = '{d.replace(chr(39), chr(39)*2)}')) "
     f'AS "{d}"'
     for d in domains
 )
@@ -121,17 +140,15 @@ pivot_sql = f"""
     SELECT
         protein,
         {pivot_cols}
-    FROM protein_domains
-    GROUP BY protein
+    FROM pfam_domain_lists
     ORDER BY protein
 """
 
-print("🔄 Pivoting domain counts...")
 con.execute(pivot_sql)
 
 
 # -------------------------------
-# Step 5: export full matrix
+# Step 6: Export full matrix
 # -------------------------------
 
 print(f"📤 Exporting domain matrix → {OUTFILE}")
@@ -142,7 +159,7 @@ con.execute(f"""
 
 
 # -------------------------------
-# Step 6: export protein IDs only
+# Step 7: Export protein IDs only
 # -------------------------------
 
 print(f"📤 Exporting protein IDs → {PROTEIN_IDS}")

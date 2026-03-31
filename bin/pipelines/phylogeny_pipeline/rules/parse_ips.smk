@@ -7,7 +7,7 @@ rule parse_ips:
         database = config["database"]
     output:
         outfile = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv",
-        protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids"
+        protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
     params:
         search_string = config.get("search_string", None),
         rstring = config.get("rstring", None)
