@@ -134,6 +134,9 @@ rule upload_to_itol:
         ),
         default     = lambda wildcards: config.get("default_annotation", []),
         marker      = f"{PHYLO_DIR}/annotation.done.flag",
+        domains = lambda wildcards: sorted(
+            glob.glob(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains/*.txt")
+        )
     output:
         tree_ids = f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag"
     params:
@@ -152,7 +155,8 @@ rule upload_to_itol:
             {params.project}    \
             {params.tree_name}  \
             {output.tree_ids}   \
-            {params.all_annots:q}
+            {params.all_annots:q} \
+            {input.domains:q}
         """
 
 ########################################

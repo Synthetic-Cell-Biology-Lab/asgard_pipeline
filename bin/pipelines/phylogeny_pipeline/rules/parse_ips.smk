@@ -6,11 +6,12 @@ rule parse_ips:
     input:
         database = config["database"]
     output:
-        outfile = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv",
+        outfile     = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv",
         protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
+        itol_dir    = directory(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains"),
     params:
         search_string = config.get("search_string", None),
-        rstring = config.get("rstring", None)
+        rstring       = config.get("rstring", None)
     conda:
         f"{config['env_dir']}/duckdb_handler.yaml"
     message:
@@ -20,7 +21,7 @@ rule parse_ips:
         ===============================
         """
     script:
-        f"{CURRENT_DIR}/bin/units/parse_ips2.py"
+        f"{CURRENT_DIR}/bin/units/parse_ips3.py"
 
 ########################################
 # Extract FASTA + CSV
