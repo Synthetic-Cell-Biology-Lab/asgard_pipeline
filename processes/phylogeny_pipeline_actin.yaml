@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: gelsolin_run11
+run_id: actin_run1
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To perform phylogenetic analysis for Gelsolin"
+reason: "To perform phylogenetic analysis for bar"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -51,10 +51,10 @@ raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/
 # Search Strategy
 
 # Case-insensitive substring search
-search_string: gelsolin
+search_string: null
 
 # Regex search pattern (set to null if unused)
-rstring: null
+rstring: (?i)\bactin\b(?![-\s]?(related|like|binding|associated))
 
 
 ###########################################################
@@ -65,7 +65,7 @@ rstring: null
 from_manual: False
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['gelsolin']
+manual_annotation_filter: ['actin']
 
 ###########################################################
 # HMMsearch mode
@@ -88,7 +88,7 @@ SSN_BITSCORES: [50, 80, 100]
 
 
 # Target protein or family name
-protein_name: gelsolin
+protein_name: actin
 
 
 ###########################################################
@@ -121,7 +121,7 @@ ymax: 1000
 PLOT_FILTER_COLUMN: Manual_annotation
 
 PLOT_FILTER_VALS:
-  - gelsolin
+  - actin
 
 # PLOT_DUAL_PROTEINS:
 
@@ -134,7 +134,7 @@ PLOT_TAXON_LEVELS:
 # presence matrix bubble plot
 
 PLOT_PROTEINS_PRESENCE:
-  - gelsolin
+  - actin
 
 
 

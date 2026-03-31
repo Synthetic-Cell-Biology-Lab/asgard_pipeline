@@ -134,30 +134,33 @@ rule upload_to_itol:
         ),
         default     = lambda wildcards: config.get("default_annotation", []),
         marker      = f"{PHYLO_DIR}/annotation.done.flag",
-        domains = lambda wildcards: sorted(
-            glob.glob(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains/*.txt")
-        )
+        itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
     output:
         tree_ids = f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag"
     params:
         project   = config.get("itol_project", "Asgard"),
         tree_name = f"fast_{config.get('run_id', 'run')}_{PROTEIN}",
-        # build the full annotation list at params time so it's one clean variable
         all_annots = lambda wildcards, input: (
             sorted(glob.glob(f"{PHYLO_DIR}/annotation/*.txt"))
             + ([input.colorstrip])
             + (input.default if isinstance(input.default, list) else [input.default])
-        )
+        ),
+        domain_files = lambda wildcards, input: sorted(
+            glob.glob(f"{input.itol_dir}/*.txt")
+        ),
     shell:
         """
         bash {CURRENT_DIR}/bin/units/itol_upload.sh \
-            {input.tree}        \
-            {params.project}    \
-            {params.tree_name}  \
-            {output.tree_ids}   \
-            {params.all_annots:q} \
-            {input.domains:q}
+            {input.tree}            \
+            {params.project}        \
+            {params.tree_name}      \
+            {output.tree_ids}       \
+            {params.all_annots:q}   \
+            {params.domain_files:q}
         """
+
+
+
 
 ########################################
 # Manual Review Gate

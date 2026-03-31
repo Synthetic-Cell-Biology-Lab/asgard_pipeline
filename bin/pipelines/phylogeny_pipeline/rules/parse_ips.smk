@@ -4,14 +4,15 @@
 
 rule parse_ips:
     input:
-        database = config["database"]
+        database     = config["database"],      # protein_summary parquet (ipr_desc aggregated)
+        raw_database = config["raw_database"],  # raw InterPro parquet (all analyses)
     output:
         outfile     = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv",
         protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
         itol_dir    = directory(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains"),
     params:
         search_string = config.get("search_string", None),
-        rstring       = config.get("rstring", None)
+        rstring       = config.get("rstring", None),
     conda:
         f"{config['env_dir']}/duckdb_handler.yaml"
     message:
@@ -21,7 +22,8 @@ rule parse_ips:
         ===============================
         """
     script:
-        f"{CURRENT_DIR}/bin/units/parse_ips3.py"
+        f"{CURRENT_DIR}/bin/units/parse_ips4.py"
+
 
 ########################################
 # Extract FASTA + CSV
