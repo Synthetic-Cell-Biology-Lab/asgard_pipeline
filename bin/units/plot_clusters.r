@@ -10,6 +10,7 @@ library(stringr)
 library(RColorBrewer)
 library(grid)
 library(patchwork)
+library(svglite)
 
 ############################################################
 # Arguments

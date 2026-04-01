@@ -80,6 +80,16 @@ FINAL_TARGETS.extend(
     )
 )
 
+
+FINAL_TARGETS.extend(
+    expand(
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.png",
+        level=config.get("PLOT_TAXON_LEVELS")
+    )
+)
+
+
+
 FINAL_TARGETS.extend(
         [f"{SSN_DIR}/{PROTEIN}.nr.fasta",
         f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
@@ -244,22 +254,30 @@ rule upload_main_tree_to_itol:
         default = lambda wildcards: config.get("default_annotation", []),
         annotation_files = lambda wildcards: sorted(
             glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
-        )
+        ),
+        itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
     output:
         tree_ids = f"{RESULT_DIR}/{PROTEIN}_main_itol_uploaded.flag"
     params:
         project = config.get("itol_project", "Asgard"),
-        tree_name = f"mafft_{config.get('run_id', 'run')}_{PROTEIN}"
+        tree_name = f"mafft_{config.get('run_id', 'run')}_{PROTEIN}",
+                all_annots = lambda wildcards, input: (
+            sorted(glob.glob(f"{PHYLO_DIR}/annotation/*.txt"))
+            + ([input.colorstrip])
+            + (input.default if isinstance(input.default, list) else [input.default])
+        ),
+        domain_files = lambda wildcards, input: sorted(
+            glob.glob(f"{input.itol_dir}/*.txt")
+        ),
     shell:
         """
         bash {CURRENT_DIR}/bin/units/itol_upload.sh \
-            {input.tree} \
-            {params.project} \
-            {params.tree_name} \
-            {output.tree_ids} \
-            {input.colorstrip} \
-            {input.default} \
-            {input.annotation_files:q}
+            {input.tree}            \
+            {params.project}        \
+            {params.tree_name}      \
+            {output.tree_ids}       \
+            {params.all_annots:q}   \
+            {params.domain_files:q}
         """
 
 

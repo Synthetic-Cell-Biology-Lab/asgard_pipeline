@@ -6,7 +6,7 @@
 pipeline: synteny_pipeline
 
 
-run_id: tubulin_homologs_synteny_v5
+run_id: tubulin_homologs_synteny_v7
 
 protein_name: tubulin
 

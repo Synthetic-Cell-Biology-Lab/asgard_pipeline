@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: kinesin_run1
+run_id: ftsz_fin_v1
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To search for motor proteins"
+reason: "Finalize FtsZ tree"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -39,14 +39,14 @@ cores: 24
 # IPS Parsing mode
 ###########################################################
 # Extract IDs from InterProScan results
-parse_ips: True
+parse_ips: False
 # Remove sequences annotated as hypothetical proteins
 remove_hypotheticals: False
 
 
 # InterProScan summary parquet database
 database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
-
+raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
 
 # Search Strategy
 
@@ -62,7 +62,7 @@ rstring: null
 ###########################################################
 
 # Extract IDs from manual annotations
-from_manual: False
+from_manual: True
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
 manual_annotation_filter: ['FtsZ1', 'FtsZ2', 'CetZ', 'Tubulin']
@@ -113,6 +113,9 @@ fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85
 
 # violin plot
 PLOT_Y_COLUMN: protein_length
+ymin: 250
+ymax: 1000
+
 
 PLOT_FILTER_COLUMN: Manual_annotation
 
@@ -151,7 +154,7 @@ PLOT_PROTEINS_PRESENCE:
 phylogeny_threads: 12
 
 # Upload resulting tree to iTOL
-run_itol_upload: false
+run_itol_upload: True
 
 # iTOL project name
 itol_project: Asgard
