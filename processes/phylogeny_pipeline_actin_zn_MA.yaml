@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: actin_run1
+run_id: actin_zn
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To perform phylogenetic analysis for bar"
+reason: "To perform phylogenetic analysis for actin_zn"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -39,7 +39,7 @@ cores: 24
 # IPS Parsing mode
 ###########################################################
 # Extract IDs from InterProScan results
-parse_ips: True
+parse_ips: False
 # Remove sequences annotated as hypothetical proteins
 remove_hypotheticals: False
 
@@ -61,10 +61,10 @@ rstring: null
 ###########################################################
 
 # Extract IDs from manual annotations
-from_manual: False
+from_manual: True
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['actin']
+manual_annotation_filter: ['Actin_zn']
 
 ###########################################################
 # HMMsearch mode
@@ -120,7 +120,7 @@ ymax: 1000
 PLOT_FILTER_COLUMN: Manual_annotation
 
 PLOT_FILTER_VALS:
-  - actin
+  - Actin_zn
 
 # PLOT_DUAL_PROTEINS:
 
@@ -133,7 +133,7 @@ PLOT_TAXON_LEVELS:
 # presence matrix bubble plot
 
 PLOT_PROTEINS_PRESENCE:
-  - actin
+  - Actin_zn
 
 
 

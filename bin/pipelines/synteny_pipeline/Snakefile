@@ -43,7 +43,7 @@ FINAL_TARGETS = [
 
 FINAL_TARGETS.extend(
     expand(
-        f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.png", 
+        f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.svg", 
             protein = config.get('gene_neighborhood_protein_sets')
             )
             )
@@ -186,8 +186,8 @@ rule plot_cluster_frequency:
     input:
         f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv"
     output:
-        freq = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.png",
-        syn_score = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.syntany_score.png"
+        freq = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.svg",
+        syn_score = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.syntany_score.svg"
 
     conda:
         f"{config['env_dir']}/bio-r.yaml"
