@@ -39,7 +39,8 @@ rule exploratory_fasttree:
     input:
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
     output:
-        tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile"
+        tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
+        msa = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.aligned.fasta"
     threads: config.get("phylogeny_threads", 8)
     conda:
         f"{config['env_dir']}/phylogeny.yaml"
@@ -99,6 +100,20 @@ rule df_for_annotation:
         
         """
 
+rule msa_to_itol:
+    input: 
+        msa = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.aligned.fasta"
+    output:
+        itol_msa = f"{PHYLO_DIR}/itol_msa.txt"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/msa_to_itol_dataset.py \
+            {input.msa} \
+            {output.itol_msa} \
+        """
+
 rule table2itol:
     input:
         annot = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
@@ -135,6 +150,7 @@ rule upload_to_itol:
         default     = lambda wildcards: config.get("default_annotation", []),
         marker      = f"{PHYLO_DIR}/annotation.done.flag",
         itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
+        itol_msa = f"{PHYLO_DIR}/itol_msa.txt"
     output:
         tree_ids = f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag"
     params:
@@ -156,7 +172,9 @@ rule upload_to_itol:
             {params.tree_name}      \
             {output.tree_ids}       \
             {params.all_annots:q}   \
-            {params.domain_files:q}
+            {params.domain_files:q} \
+            {input.itol_msa}
+
         """
 
 

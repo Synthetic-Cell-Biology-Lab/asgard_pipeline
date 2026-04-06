@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: dynein_3
+run_id: SepF_1
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To study domain structure of dynein proteins in asgard"
+reason: "Finalize sepf tree"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -39,7 +39,7 @@ cores: 24
 # IPS Parsing mode
 ###########################################################
 # Extract IDs from InterProScan results
-parse_ips: false
+parse_ips: False
 # Remove sequences annotated as hypothetical proteins
 remove_hypotheticals: False
 
@@ -48,11 +48,10 @@ remove_hypotheticals: False
 database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
 raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
 
-
 # Search Strategy
 
 # Case-insensitive substring search
-search_string: Dynein_like
+search_string: SepF
 
 # Regex search pattern (set to null if unused)
 rstring: null
@@ -66,7 +65,7 @@ rstring: null
 from_manual: True
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['Dynein_like']
+manual_annotation_filter: ['SepF']
 
 ###########################################################
 # HMMsearch mode
@@ -89,7 +88,7 @@ RUN_SSN: True
 
 
 # Target protein or family name
-protein_name: Dynein_like
+protein_name: SepF
 
 
 ###########################################################
@@ -115,15 +114,16 @@ fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85
 # violin plot
 PLOT_Y_COLUMN: protein_length
 ymin: 0
-ymax: 100000
+ymax: 1000
 
 
 PLOT_FILTER_COLUMN: Manual_annotation
 
 PLOT_FILTER_VALS:
-  - Dynein_like
+  - SepF
 
-# PLOT_DUAL_PROTEINS:
+PLOT_DUAL_PROTEINS:
+  - SepF
 
 PLOT_TAXON_LEVELS:
   - phylum
@@ -134,7 +134,7 @@ PLOT_TAXON_LEVELS:
 # presence matrix bubble plot
 
 PLOT_PROTEINS_PRESENCE:
-  - Dynein_like
+  - SepF
 
 
 
@@ -147,7 +147,7 @@ PLOT_PROTEINS_PRESENCE:
 phylogeny_threads: 12
 
 # Upload resulting tree to iTOL
-run_itol_upload: true
+run_itol_upload: True
 
 # iTOL project name
 itol_project: Asgard

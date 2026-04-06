@@ -61,11 +61,25 @@ echo "Alignment complete → ${PREFIX}.aligned.fasta"
 ############################################
 # Preferred over TrimAl for protein datasets
 
-echo "Running ClipKIT trimming..."
+# echo "Running ClipKIT trimming..."
 
-clipkit "${PREFIX}.aligned.fasta" \
-    -m smart-gap \
-    -o "${PREFIX}.trimmed.fasta"
+# clipkit "${PREFIX}.aligned.fasta" \
+#     -m kpic-smart-gap \
+#     -o "${PREFIX}.trimmed.fasta"
+
+# echo "Trimming complete → ${PREFIX}.trimmed.fasta"
+
+# trimal -in "${PREFIX}.aligned.fasta" \
+#     -gt 0.1 \
+#     -out "${PREFIX}.trimmed.fasta"
+
+echo "Trimming with BMGE"
+
+bmge -i "${PREFIX}.aligned.fasta" \
+     -t AA \
+     -o "${PREFIX}.trimmed.fasta"
+
+
 
 echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
