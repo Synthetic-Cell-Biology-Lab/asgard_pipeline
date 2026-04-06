@@ -239,7 +239,7 @@ rule run_phylogeny:
         """
     shell:
         """
-        bash bin/units/phylogeny_pipeline.sh \
+        bash bin/units/phylogeny_pipeline_trimal.sh \
             {input.fasta} \
             {params.prefix} \
             {threads}

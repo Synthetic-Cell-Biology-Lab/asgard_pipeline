@@ -61,11 +61,20 @@ echo "Alignment complete → ${PREFIX}.aligned.fasta"
 ############################################
 # Preferred over TrimAl for protein datasets
 
-echo "Running ClipKIT trimming..."
+# echo "Running ClipKIT trimming..."
 
-clipkit "${PREFIX}.aligned.fasta" \
-    -m smart-gap \
-    -o "${PREFIX}.trimmed.fasta"
+# clipkit "${PREFIX}.aligned.fasta" \
+#     -m kpic-smart-gap \
+#     -o "${PREFIX}.trimmed.fasta"
+
+# echo "Trimming complete → ${PREFIX}.trimmed.fasta"
+echo "Running TrimAl -gt0.2"
+
+trimal -in "${PREFIX}.aligned.fasta" \
+    -gt 0.2 \
+    -out "${PREFIX}.trimmed.fasta"
+
+
 
 echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
@@ -73,7 +82,7 @@ echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 # 3️⃣ Model Selection + 4️⃣ ML Tree (IQ-TREE3)
 ############################################
 
-echo "Running IQ-TREE3 (Model selection + ML tree)..."
+echo "Running IQ-TREE3 (Model selection + ML tree) (MFP+G+R)..."
 
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
