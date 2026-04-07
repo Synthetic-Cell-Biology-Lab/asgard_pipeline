@@ -11,7 +11,10 @@ INPUT_TABLE = "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered
 
 # dictionary: annotation_name -> file containing protein ids
 annotation_files = {
-    "MreB_actin" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/mreb_actin.ids"
+    "MreB_actin" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/mreb_actin.ids",
+    "Actin" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/actin.ids",
+    "Actin_zn" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/actin_zn.ids",
+    "Actin_700" : "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/Actin_fusions_700.ids"
 }
 
 # ============================================================

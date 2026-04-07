@@ -38,7 +38,7 @@ echo "=============================================="
 
 # echo "🧬 Running MAFFT alignment..."
 
-# mafft --retree 2 --maxiterate 2 --thread "$THREADS" "$INPUT_FASTA" \
+# mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
 #     > "${PREFIX}.aligned.fasta"
 
 # echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"

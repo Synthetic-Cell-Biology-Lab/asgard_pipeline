@@ -38,7 +38,7 @@ echo "=============================================="
 
 # echo "🧬 Running MAFFT alignment..."
 
-# mafft --retree 2 --maxiterate 2 --thread "$THREADS" "$INPUT_FASTA" \
+# mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
 #     > "${PREFIX}.aligned.fasta"
 
 # echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
@@ -68,7 +68,7 @@ echo "Alignment complete → ${PREFIX}.aligned.fasta"
 #     -o "${PREFIX}.trimmed.fasta"
 
 # echo "Trimming complete → ${PREFIX}.trimmed.fasta"
-echo "Running TrimAl -gt0.2"
+echo "Running TrimAl -gt 0.1"
 
 trimal -in "${PREFIX}.aligned.fasta" \
     -gt 0.2 \
@@ -87,7 +87,7 @@ echo "Running IQ-TREE3 (Model selection + ML tree) (MFP+G+R)..."
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m MFP+G+R \
+    -m MFP+G+C10-C60+R \
     -bb 1000 -bnni \
     -alrt 1000 \
     -redo \
