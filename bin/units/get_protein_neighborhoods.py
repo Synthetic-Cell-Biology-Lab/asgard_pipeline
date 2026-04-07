@@ -54,7 +54,9 @@ def load_ips_annotations(proteins, parquet_file):
 # Extract neighborhood
 ############################################################
 
-def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, window):
+def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, window, tax_levels=None):
+
+    tax_levels = tax_levels or []
 
     rows = []
 
@@ -71,6 +73,12 @@ def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, windo
         records = list(SeqIO.parse(gbk_file, "genbank"))
 
         target_loci = set(gdf["locus_tag"])
+
+        taxonomy_lookup = (
+            gdf.drop_duplicates(subset=["locus_tag"]).set_index("locus_tag")[tax_levels]
+            .to_dict(orient="index")
+            if tax_levels else {}
+        )
 
         for rec in records:
 
@@ -113,7 +121,7 @@ def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, windo
 
                     gene_offset = n_idx - idx
 
-                    rows.append({
+                    row = {
                         "genome": genome,
                         "center_protein": protein_name,
                         "center_locus": locus,
@@ -132,7 +140,12 @@ def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, windo
 
                         "distance_bp": distance_bp,
                         "gene_offset": gene_offset
-                    })
+                    }
+
+                    for tax_level in tax_levels:
+                        row[tax_level] = taxonomy_lookup.get(locus, {}).get(tax_level, "Unknown")
+
+                    rows.append(row)
 
     return pd.DataFrame(rows)
 
@@ -152,6 +165,7 @@ def main():
     parser.add_argument("--window", type=int, default=5000)
     parser.add_argument("--gbk_path", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--tax_levels", default="")
 
     args = parser.parse_args()
 
@@ -176,12 +190,16 @@ def main():
 
     print(f"🔎 Extracting neighborhoods for {args.protein}")
 
+    tax_levels = [x.strip() for x in str(args.tax_levels).split(",") if x.strip()]
+    tax_levels = [col for col in tax_levels if col in df.columns]
+
     neighborhood_df = extract_neighborhood(
         df,
         args.protein,
         args.protein_col,
         args.gbk_path,
-        args.window
+        args.window,
+        tax_levels=tax_levels
     )
 
     if neighborhood_df.empty:
