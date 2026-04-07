@@ -20,7 +20,9 @@ option_list <- list(
   make_option(c("--input"),   type="character"),
   make_option(c("--output"),  type="character"),
   make_option(c("--output2"), type="character"),
-  make_option(c("--protein"), type="character")
+  make_option(c("--protein"), type="character"),
+  make_option(c("--tax_levels"), type="character", default = ""),
+  make_option(c("--extra_output_dir"), type="character", default = "")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -31,6 +33,9 @@ if(is.null(opt$output2)) stop("ERROR: --output2 not provided")
 if(is.null(opt$protein)) stop("ERROR: --protein not provided")
 
 protein_name <- opt$protein
+tax_levels <- str_split(opt$tax_levels, ",")[[1]] %>%
+  str_trim()
+tax_levels <- tax_levels[tax_levels != ""]
 
 ############################################################
 # Load data
@@ -105,10 +110,12 @@ resolve_label <- function(cluster_lbl) {
 # Compute total genomes
 ############################################################
 
-total_genomes <- df %>%
-  pull(genome) %>%
-  unique() %>%
-  length()
+get_total_genomes <- function(in_df) {
+  in_df %>%
+    pull(genome) %>%
+    unique() %>%
+    length()
+}
 
 ############################################################
 # Helper: build the 1x4 combined plot for a given top-20 slice
@@ -116,7 +123,7 @@ total_genomes <- df %>%
 #   bar_mode: "cluster_colors" | "synteny"
 ############################################################
 
-build_plot <- function(all_clusters, rank_by, title_suffix) {
+build_plot <- function(in_df, all_clusters, rank_by, title_suffix, total_genomes) {
 
   # --- Slice top 20 by chosen metric ---
   top_table <- all_clusters %>%
@@ -155,7 +162,7 @@ build_plot <- function(all_clusters, rank_by, title_suffix) {
     )
 
   # --- Raw rows for top 20 (with synteny score joined for panels 3+4) ---
-  raw <- df %>%
+  raw <- in_df %>%
     filter(annotation_cluster %in% top_ids) %>%
     mutate(
       annotation_cluster = factor(annotation_cluster, levels = top_ids),
@@ -247,26 +254,38 @@ build_plot <- function(all_clusters, rank_by, title_suffix) {
   list(plot = p_combined, height = plot_height)
 }
 
+sanitize_taxon <- function(x) {
+  x %>%
+    str_replace_all("[^A-Za-z0-9._-]+", "_") %>%
+    str_replace_all("^_+|_+$", "") %>%
+    {\(v) ifelse(v == "", "Unknown", v)}
+}
+
+build_cluster_table <- function(in_df, total_genomes) {
+  in_df %>%
+    filter(!is.na(annotation_cluster)) %>%
+    group_by(annotation_cluster, cluster_label) %>%
+    summarise(
+      genome_count  = n_distinct(genome),
+      synteny_score = {
+        offset_counts <- table(gene_offset)
+        max(offset_counts) / n_distinct(genome)
+      },
+      .groups = "drop"
+    ) %>%
+    mutate(
+      proportion   = genome_count / total_genomes,
+      rep_desc     = sapply(cluster_label, resolve_label),
+      legend_label = paste0(annotation_cluster, " - ", str_wrap(rep_desc, width = 50))
+    )
+}
+
 ############################################################
 # Compute full cluster table (all clusters, not sliced yet)
 ############################################################
 
-all_clusters <- df %>%
-  filter(!is.na(annotation_cluster)) %>%
-  group_by(annotation_cluster, cluster_label) %>%
-  summarise(
-    genome_count  = n_distinct(genome),
-    synteny_score = {
-      offset_counts <- table(gene_offset)
-      max(offset_counts) / n_distinct(genome)
-    },
-    .groups = "drop"
-  ) %>%
-  mutate(
-    proportion   = genome_count / total_genomes,
-    rep_desc     = sapply(cluster_label, resolve_label),
-    legend_label = paste0(annotation_cluster, " - ", str_wrap(rep_desc, width = 50))
-  )
+total_genomes <- get_total_genomes(df)
+all_clusters <- build_cluster_table(df, total_genomes)
 
 ############################################################
 # Shared theme / palettes (used inside build_plot)
@@ -306,7 +325,12 @@ synteny_color_palette <- scale_color_gradientn(
 # Build & save: ranked by genome count
 ############################################################
 
-out1 <- build_plot(all_clusters, rank_by = "genome_count",  title_suffix = "by Genome Count")
+out1 <- build_plot(
+  df, all_clusters,
+  rank_by = "genome_count",
+  title_suffix = "by Genome Count",
+  total_genomes = total_genomes
+)
 ggsave(opt$output,  out1$plot, width = 36, height = out1$height, dpi = 300)
 cat("Plot saved:", opt$output, "\n")
 
@@ -314,6 +338,60 @@ cat("Plot saved:", opt$output, "\n")
 # Build & save: ranked by synteny score
 ############################################################
 
-out2 <- build_plot(all_clusters, rank_by = "synteny_score", title_suffix = "by Synteny Score")
+out2 <- build_plot(
+  df, all_clusters,
+  rank_by = "synteny_score",
+  title_suffix = "by Synteny Score",
+  total_genomes = total_genomes
+)
 ggsave(opt$output2, out2$plot, width = 36, height = out2$height, dpi = 300)
 cat("Plot saved:", opt$output2, "\n")
+
+############################################################
+# Build & save taxa-level frequency plots
+############################################################
+
+if (length(tax_levels) > 0 && opt$extra_output_dir != "") {
+  dir.create(opt$extra_output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  for (tax_level in tax_levels) {
+    if (!(tax_level %in% colnames(df))) {
+      cat("Skipping tax level missing from input:", tax_level, "\n")
+      next
+    }
+
+    taxa_values <- df %>%
+      pull(.data[[tax_level]]) %>%
+      unique()
+
+    for (taxon in taxa_values) {
+      if (is.na(taxon) || taxon == "") next
+
+      subset_df <- df %>%
+        filter(.data[[tax_level]] == taxon)
+
+      if (nrow(subset_df) == 0) next
+
+      subset_total_genomes <- get_total_genomes(subset_df)
+      subset_clusters <- build_cluster_table(subset_df, subset_total_genomes)
+
+      if (nrow(subset_clusters) == 0) next
+
+      out_tax <- build_plot(
+        subset_df,
+        subset_clusters,
+        rank_by = "genome_count",
+        title_suffix = paste0("by Genome Count | ", tax_level, " = ", taxon),
+        total_genomes = subset_total_genomes
+      )
+
+      outfile <- file.path(
+        opt$extra_output_dir,
+        paste0(protein_name, "_", sanitize_taxon(taxon), ".cluster_frequency.svg")
+      )
+
+      ggsave(outfile, out_tax$plot, width = 36, height = out_tax$height, dpi = 300)
+      cat("Taxa plot saved:", outfile, "\n")
+    }
+  }
+}

@@ -147,7 +147,8 @@ rule quantify_neighborhood:
     params:
         window = config.get("nucleotide_window", 5000),
         protein_column = config.get("protein_column", "Manual_annotation"),
-        gbk_path = config["gbk_database"]
+        gbk_path = config["gbk_database"],
+        tax_levels = ",".join(config.get("taxa_levels", []))
 
     conda:
         f"{config['env_dir']}/duckdb_handler.yaml"
@@ -160,6 +161,7 @@ rule quantify_neighborhood:
                 --protein {wildcards.protein} \
                 --window {params.window} \
                 --gbk_path {params.gbk_path} \
+                --tax_levels {params.tax_levels} \
                 --out {output.protein_csv}
 
         """
@@ -187,7 +189,11 @@ rule plot_cluster_frequency:
         f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv"
     output:
         freq = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.svg",
-        syn_score = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.syntany_score.svg"
+        syn_score = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.syntany_score.svg",
+        done = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.taxa.done"
+    params:
+        tax_levels = ",".join(config.get("taxa_levels", [])),
+        output_dir = f"{SYNTENY_DIR}/cluster_plots"
 
     conda:
         f"{config['env_dir']}/bio-r.yaml"
@@ -197,5 +203,8 @@ rule plot_cluster_frequency:
             --input {input} \
             --output {output.freq} \
             --output2 {output.syn_score} \
+            --extra_output_dir {params.output_dir} \
+            --tax_levels {params.tax_levels} \
             --protein {wildcards.protein}
+        touch {output.done}
         """
