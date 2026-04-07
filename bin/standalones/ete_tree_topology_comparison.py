@@ -7,7 +7,7 @@ import re
 from Bio import SeqIO
 from ete3 import Tree
 
-TREE_DIR = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/with_csm_seq"
+TREE_DIR = "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_1/final_tree_construction"
 ALIGN_DIR = TREE_DIR
 
 out_path = f"{TREE_DIR}/tree_comparison_out.txt"

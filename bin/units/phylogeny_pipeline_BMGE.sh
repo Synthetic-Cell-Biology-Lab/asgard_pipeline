@@ -92,7 +92,7 @@ echo "Running IQ-TREE3 (Model selection + ML tree)..."
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m MFP+G+R \
+    -m MFP+G+C10-C60+R \
     -bb 1000 -bnni \
     -alrt 1000 \
     -redo \
