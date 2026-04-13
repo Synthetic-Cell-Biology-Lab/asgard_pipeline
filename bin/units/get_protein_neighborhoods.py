@@ -53,7 +53,6 @@ def load_ips_annotations(proteins, parquet_file):
 ############################################################
 # Extract neighborhood
 ############################################################
-
 def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, window, tax_levels=None):
 
     tax_levels = tax_levels or []
@@ -93,53 +92,66 @@ def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, windo
                 if locus not in target_loci:
                     continue
 
-                center_start = int(feat.location.start)
-                center_end = int(feat.location.end)
-                center_mid = (center_start + center_end) // 2
+                center_strand = feat.location.strand   # +1 or -1
+                center_start  = int(feat.location.start)
+                center_end    = int(feat.location.end)
+                center_mid    = (center_start + center_end) // 2
 
                 region_start = max(0, center_start - window)
-                region_end = center_end + window
+                region_end   = center_end + window
 
                 for n_idx, neighbor in enumerate(cds_features):
 
                     n_start = int(neighbor.location.start)
-                    n_end = int(neighbor.location.end)
+                    n_end   = int(neighbor.location.end)
 
                     if n_end < region_start or n_start > region_end:
                         continue
 
                     n_locus = neighbor.qualifiers.get("locus_tag", [""])[0]
 
-                    # skip center gene itself
                     if n_locus == locus:
                         continue
 
-                    product = neighbor.qualifiers.get("product", [""])[0]
+                    product  = neighbor.qualifiers.get("product", [""])[0]
+                    n_strand = neighbor.location.strand
+                    n_mid    = (n_start + n_end) // 2
 
-                    n_mid = (n_start + n_end) // 2
+                    # Raw genomic values
                     distance_bp = n_mid - center_mid
-
                     gene_offset = n_idx - idx
 
-                    row = {
-                        "genome": genome,
-                        "center_protein": protein_name,
-                        "center_locus": locus,
+                    # Flip both to be relative to center gene's reading direction.
+                    # For a minus-strand center, genomic "right" is biologically
+                    # "upstream", so we invert so that negative = upstream,
+                    # positive = downstream in all cases.
+                    if center_strand == -1:
+                        distance_bp = -distance_bp
+                        gene_offset = -gene_offset
 
-                        "neighbor_locus": n_locus,
+                    row = {
+                        "genome":          genome,
+                        "center_protein":  protein_name,
+                        "center_locus":    locus,
+
+                        "neighbor_locus":   n_locus,
                         "neighbor_product": product,
 
-                        "start": n_start,
-                        "end": n_end,
-                        "strand": neighbor.location.strand,
+                        "start":  n_start,
+                        "end":    n_end,
 
-                        "center_start": center_start,
-                        "center_end": center_end,
-                        "center_mid": center_mid,
-                        "neighbor_mid": n_mid,
+                        "center_start":  center_start,
+                        "center_end":    center_end,
+                        "center_mid":    center_mid,
+                        "neighbor_mid":  n_mid,
 
-                        "distance_bp": distance_bp,
-                        "gene_offset": gene_offset
+                        "center_strand":   center_strand,
+                        "neighbor_strand": n_strand,
+                        # True = same operon candidate; False = divergent/convergent
+                        "same_strand":     center_strand == n_strand,
+
+                        "distance_bp":  distance_bp,
+                        "gene_offset":  gene_offset,
                     }
 
                     for tax_level in tax_levels:
@@ -148,7 +160,6 @@ def extract_neighborhood(filtered_df, protein_name, protein_col, gbk_path, windo
                     rows.append(row)
 
     return pd.DataFrame(rows)
-
 
 ############################################################
 # MAIN

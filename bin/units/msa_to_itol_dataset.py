@@ -45,7 +45,7 @@ def write_itol_fasta(sequences, output_file, label="MSA"):
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python fasta_to_itol_fasta.py input.fasta output.txt")
+        print("Usage: python msa_to_itol_fasta.py input.fasta output.txt")
         sys.exit(1)
 
     fasta_file = sys.argv[1]

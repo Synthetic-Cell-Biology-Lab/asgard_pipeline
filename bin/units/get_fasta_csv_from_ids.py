@@ -1,36 +1,74 @@
 #!/usr/bin/env python3
 
-"""
-Extract sequences and CSV rows matching protein IDs.
-
-Inputs:
-- snakemake.input.fasta
-- snakemake.input.protein_file
-- snakemake.input.protein_ids
-
-Outputs:
-- snakemake.output.outfasta
-- snakemake.output.protein_csv
-"""
-
 from Bio import SeqIO
 import pandas as pd
 import sys
+import argparse
 
 
 # -------------------------------
-# Snakemake I/O
+# Input Handling
 # -------------------------------
 
-FASTA_FILE = snakemake.input.fasta
-CSV_FILE = snakemake.input.protein_file
-IDS_FILE = snakemake.input.protein_ids
-GENOME_FILE = snakemake.input.genome_file
-PROTEIN = snakemake.params.protein_name
+def get_args():
+    """Handle both Snakemake and CLI usage."""
 
-OUT_FASTA = snakemake.output.outfasta
-OUT_CSV = snakemake.output.protein_csv
-REMOVE_HYPOTHETICALS = snakemake.params.remove_hypotheticals
+    if "snakemake" in globals():
+        return {
+            "FASTA_FILE": snakemake.input.fasta,
+            "CSV_FILE": snakemake.input.protein_file,
+            "IDS_FILE": snakemake.input.protein_ids,
+            "GENOME_FILE": snakemake.input.genome_file,
+            "OUT_FASTA": snakemake.output.outfasta,
+            "OUT_CSV": snakemake.output.protein_csv,
+            "PROTEIN": snakemake.params.protein_name,
+            "REMOVE_HYPOTHETICALS": snakemake.params.remove_hypotheticals,
+        }
+
+    # CLI mode
+    parser = argparse.ArgumentParser(
+        description="Extract sequences and CSV rows matching protein IDs"
+    )
+
+    parser.add_argument("--fasta", required=True)
+    parser.add_argument("--csv", required=True)
+    parser.add_argument("--ids", required=True)
+    parser.add_argument("--genome_file", required=True)
+    parser.add_argument("--outfasta", required=True)
+    parser.add_argument("--outcsv", required=True)
+    parser.add_argument("--protein_name", required=True)
+    parser.add_argument(
+        "--remove_hypotheticals",
+        action="store_true",
+        help="Remove hypothetical proteins"
+    )
+
+    args = parser.parse_args()
+
+    return {
+        "FASTA_FILE": args.fasta,
+        "CSV_FILE": args.csv,
+        "IDS_FILE": args.ids,
+        "GENOME_FILE": args.genome_file,
+        "OUT_FASTA": args.outfasta,
+        "OUT_CSV": args.outcsv,
+        "PROTEIN": args.protein_name,
+        "REMOVE_HYPOTHETICALS": args.remove_hypotheticals,
+    }
+
+
+# Load args
+cfg = get_args()
+
+FASTA_FILE = cfg["FASTA_FILE"]
+CSV_FILE = cfg["CSV_FILE"]
+IDS_FILE = cfg["IDS_FILE"]
+GENOME_FILE = cfg["GENOME_FILE"]
+OUT_FASTA = cfg["OUT_FASTA"]
+OUT_CSV = cfg["OUT_CSV"]
+PROTEIN = cfg["PROTEIN"]
+REMOVE_HYPOTHETICALS = cfg["REMOVE_HYPOTHETICALS"]
+
 
 # -------------------------------
 # Load Protein IDs
@@ -63,12 +101,8 @@ for record in SeqIO.parse(FASTA_FILE, "fasta"):
     header = record.description.lower()
 
     if REMOVE_HYPOTHETICALS:
-        # Remove the ID from header
-        # record.description looks like:
-        # "ABC_001 hypothetical protein"
         header_without_id = header.replace(record.id.lower(), "", 1).strip()
 
-        # Check if hypothetical
         if "hypothetical" in header_without_id:
             skipped_hypotheticals += 1
             continue
@@ -95,7 +129,7 @@ df = pd.read_csv(CSV_FILE)
 gf = pd.read_csv(GENOME_FILE)
 
 merged = pd.merge(gf, df, on="genome_file", how="inner")
-# Assumes column name is 'protein'
+
 if "locus_tag" not in df.columns:
     sys.exit("❌ CSV does not contain a 'locus_tag' column.")
 
@@ -104,12 +138,9 @@ filtered_df = merged[merged["locus_tag"].isin(protein_ids)]
 if filtered_df.empty:
     print("⚠️ No matching rows in CSV.")
 
-filtered_df['Manual_annotation'] = PROTEIN
-
-
+filtered_df["Manual_annotation"] = PROTEIN
 
 filtered_df.to_csv(OUT_CSV, index=False)
 
 print(f"✅ CSV written → {OUT_CSV}")
-
 print("🎉 Extraction complete.")

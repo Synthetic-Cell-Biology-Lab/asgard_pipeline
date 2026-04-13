@@ -158,7 +158,7 @@ text_df <- prop_df %>%
 # rather than squishing dots to fit a fixed canvas.
 # -----------------------------
 
-DOT_STEP <- 0.5   # fixed spacing between copy-level dots (data units)
+DOT_STEP <- 0.2   # fixed spacing between copy-level dots (data units)
 
 n_proteins        <- length(protein_list)
 global_max_copies <- if (nrow(dot_df) > 0) max(dot_df$copy_level_plot) else 1
@@ -199,7 +199,7 @@ dot_gradient <- dot_df %>% filter(proportion > 0 & proportion < 1.0)
 dot_empty    <- dot_df %>% filter(proportion == 0, copy_level_plot == 1)
 
 # Padding: half a cell + half the max spread width on each side
-x_expand_add <- 0.5 + (global_max_copies - 1) * DOT_STEP / 2 + 0.3
+x_expand_add <- 0.5 + (global_max_copies - 1) * DOT_STEP / 2 + 0.5
 
 # -----------------------------
 # Plot

@@ -5,12 +5,12 @@ from datetime import datetime
 # ==============================
 # 🔧 HARDCODED INPUTS
 # ==============================
-FASTA_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/actin/actin_run1/extraction_exploration/actin.unr.fasta"
-IDS_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/actin/actin_run1/extraction_exploration/actins.rev.ids"
-OUTPUT_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/actin/actin_run1/actin.rev.fasta"
-LOG_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/actin/actin_run1/phylogeny_pipeline.log"
+FASTA_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/extraction_exploration/ftsz.unr.fasta"
+IDS_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/extraction_exploration/ftsz2.rev.ids"
+OUTPUT_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/ftsz.rev.fasta"
+LOG_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/phylogeny_pipeline.log"
 
-MIN_LEN = 300
+MIN_LEN = 0
 MAX_LEN = 1000
 
 
@@ -44,7 +44,7 @@ log("Starting protein filtering run", Color.CYAN)
 # 📂 LOAD IDS
 # ==============================
 with open(IDS_PATH) as f:
-    ids = set(line.strip() for line in f if line.strip())
+    ids = set(line.strip().replace(" ", "_") for line in f if line.strip())
 
 log(f"Loaded {len(ids)} IDs", Color.CYAN)
 
