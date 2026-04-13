@@ -1,0 +1,172 @@
+###########################################################
+# Pipeline
+###########################################################
+
+# Pipeline name to execute
+pipeline: phylogeny_pipeline
+
+
+###########################################################
+# Run Metadata
+###########################################################
+
+# Identifier for this run (timestamp used if omitted)
+run_id: actin_run3
+
+# Base directory for the pipeline
+base_dir: "/home/anirudh/asgard_pipeline"
+
+# Conda environment directory
+env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+
+# Directory for pipeline logs
+log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+
+# Description or purpose of the run
+reason: "explore actins"
+
+# Number of CPU cores available for the workflow
+cores: 24
+
+
+###########################################################
+# ID Extraction Mode
+###########################################################
+
+
+
+###########################################################
+# IPS Parsing mode
+###########################################################
+# Extract IDs from InterProScan results
+parse_ips: False
+# Remove sequences annotated as hypothetical proteins
+remove_hypotheticals: False
+
+
+# InterProScan summary parquet database
+database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
+
+# Search Strategy
+
+# Case-insensitive substring search
+search_string: ftsz
+
+# Regex search pattern (set to null if unused)
+rstring: null
+
+
+###########################################################
+# Manual annotation mode
+###########################################################
+
+# Extract IDs from manual annotations
+from_manual: True
+taxon_level: phylum
+taxon_filter: Asgardarchaeota
+manual_annotation_filter: ['Actin', 'Actin_700', 'Actin_zn', 'MreB_actin']
+
+###########################################################
+# HMMsearch mode
+###########################################################
+
+# Extract IDs from HMM search
+hmmsearch: false
+
+
+
+
+RUN_SSN: True
+
+
+###########################################################
+# Biological Target
+###########################################################
+
+
+
+
+# Target protein or family name
+protein_name: actin
+
+
+###########################################################
+# Input Files
+###########################################################
+
+# genome_file
+genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
+
+# Master protein annotation table
+protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
+
+# FASTA file containing all protein sequences
+fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
+
+
+
+
+###########################################################
+# Plotting
+###########################################################
+
+# violin plot
+PLOT_Y_COLUMN: protein_length
+ymin: 100
+ymax: 1000
+
+
+PLOT_FILTER_COLUMN: Manual_annotation
+
+PLOT_FILTER_VALS:
+  - Actin
+  - Actin_zn
+  - Actin_700
+  - MreB_actin
+
+PLOT_DUAL_PROTEINS:
+
+
+PLOT_TAXON_LEVELS:
+  - phylum
+  - class
+  - order
+
+
+# presence matrix bubble plot
+
+PLOT_PROTEINS_PRESENCE:
+  - Actin
+  - Actin_zn
+  - Actin_700
+  - MreB_actin
+
+
+
+###########################################################
+# Phylogeny Settings
+###########################################################
+
+# Threads used during phylogeny construction
+phylogeny_threads: 12
+
+# Upload resulting tree to iTOL
+run_itol_upload: True
+
+# iTOL project name
+itol_project: Asgard
+
+# Default iTOL annotation file
+default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
+
+
+
+
+
+###########################################################
+# Notes
+###########################################################
+
+# Exactly one of search_string or rstring must be set
+# If both are set or both are null, parse_ips.py will exit

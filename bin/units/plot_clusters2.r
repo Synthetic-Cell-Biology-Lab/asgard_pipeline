@@ -22,11 +22,10 @@ option_list <- list(
   make_option(c("--output2"),     type="character"),
   make_option(c("--protein"),     type="character"),
   make_option(c("--genome_file"), type="character", default=NULL,
-              help="TSV/CSV with columns: genome_file, domain, phylum, class, order, family, genus"),
+              help="CSV with columns: genome, domain, phylum, class, order, family, genus"),
   make_option(c("--tax_level"),   type="character", default=NULL,
               help="Taxonomic level to split plots by. One of: domain, phylum, class, order, family, genus")
 )
-
 
 opt <- parse_args(OptionParser(option_list = option_list))
 
@@ -35,13 +34,30 @@ if (is.null(opt$output))  stop("ERROR: --output not provided")
 if (is.null(opt$output2)) stop("ERROR: --output2 not provided")
 if (is.null(opt$protein)) stop("ERROR: --protein not provided")
 
-# Validate tax_level if genome_file is provided
 valid_tax_levels <- c("domain", "phylum", "class", "order", "family", "genus")
 if (!is.null(opt$genome_file) && is.null(opt$tax_level)) {
   stop("ERROR: --tax_level must be provided when --genome_file is used")
 }
 if (!is.null(opt$tax_level) && !(opt$tax_level %in% valid_tax_levels)) {
   stop(paste("ERROR: --tax_level must be one of:", paste(valid_tax_levels, collapse=", ")))
+}
+
+# Derive color level as one step below the split tax level in the hierarchy
+tax_hierarchy <- c("species", "genus", "family", "order", "class", "phylum", "domain")
+
+if (!is.null(opt$tax_level)) {
+  tax_level_idx <- which(tax_hierarchy == opt$tax_level)
+
+  if (length(tax_level_idx) == 0) {
+    stop(paste("ERROR: --tax_level not found in hierarchy:", opt$tax_level))
+  }
+  if (tax_level_idx == 1) {
+    stop("ERROR: cannot color one level below species — no lower level defined")
+  }
+
+  color_level <- tax_hierarchy[tax_level_idx - 1]
+} else {
+  color_level <- "order"   # sensible default when no genome_file / tax_level given
 }
 
 protein_name <- opt$protein
@@ -52,52 +68,85 @@ protein_name <- opt$protein
 
 df <- read_csv(opt$input, show_col_types = FALSE)
 
-############################################################
-# Validate columns
-############################################################
-
-required_cols <- c("annotation_cluster", "cluster_label", "genome", "IPS_acc", "IPS_desc",
-                   "gene_offset", "distance_bp")
-
+required_cols <- c("annotation_cluster", "cluster_label", "genome",
+                   "IPS_acc", "IPS_desc", "gene_offset", "distance_bp")
 missing <- setdiff(required_cols, colnames(df))
-if (length(missing) > 0) {
-  stop(paste("Missing columns:", paste(missing, collapse=", ")))
+if (length(missing) > 0) stop(paste("Missing columns:", paste(missing, collapse=", ")))
+
+############################################################
+# Build a distinguishable colour palette for a character
+# vector of names (alphabetically pre-sorted by the caller).
+#
+# Uses a curated high-contrast set:
+#   up to 20 values  -> hand-picked 20-colour qualitative set
+#   beyond 20        -> interpolated extension of the same set
+############################################################
+
+DISTINCT_20 <- c(
+  "#E63946", "#F4A261", "#2A9D8F", "#457B9D", "#6A0572",
+  "#F1C453", "#264653", "#A8DADC", "#E76F51", "#8338EC",
+  "#06D6A0", "#FFB703", "#219EBC", "#FB8500", "#023047",
+  "#8ECAE6", "#C77DFF", "#D62828", "#52B788", "#B5838D"
+)
+
+make_color_palette <- function(names_vec) {
+  n <- length(names_vec)
+  cols <- if (n <= 20) {
+    DISTINCT_20[seq_len(n)]
+  } else {
+    colorRampPalette(DISTINCT_20)(n)
+  }
+  setNames(cols, names_vec)
 }
 
 ############################################################
-# Load genome taxonomy file (optional)
+# Join order-level taxonomy from genome_file
+# Also joins tax_label for the per-taxon split if requested.
 ############################################################
 
 if (!is.null(opt$genome_file)) {
   tax_df <- read_csv(opt$genome_file, show_col_types = FALSE)
 
-  required_tax_cols <- c("genome_file", opt$tax_level)
-  missing_tax <- setdiff(required_tax_cols, colnames(tax_df))
+  # genome_file uses "genome_file" as the genome column header
+  needed <- unique(c("genome_file", color_level, opt$tax_level))
+  missing_tax <- setdiff(needed, colnames(tax_df))
   if (length(missing_tax) > 0) {
     stop(paste("genome_file is missing columns:", paste(missing_tax, collapse=", ")))
   }
 
-  # Keep only genome + the requested tax level column
-  tax_df <- tax_df %>%
-    select(genome_file, tax_label = all_of(opt$tax_level)) %>%
-    mutate(tax_label = as.character(tax_label))
+  # Build the global color palette from ALL values in the color_level column
+  # (alphabetically sorted, before any merge losses) so colors are consistent
+  # across every taxon plot produced in this run.
+  all_color_values <- sort(unique(na.omit(tax_df[[color_level]])))
+  all_color_values <- all_color_values[str_trim(all_color_values) != ""]
+  all_color_values <- c(all_color_values, "Unknown")   # reserve a slot for unknowns
+  global_order_palette <- make_color_palette(all_color_values)
 
-  # Replace NA / empty strings with "Unknown"
   tax_df <- tax_df %>%
-    mutate(tax_label = if_else(is.na(tax_label) | str_trim(tax_label) == "", "Unknown", tax_label))
+    select(genome_file, genome_order = all_of(color_level),
+           tax_label = all_of(opt$tax_level)) %>%
+    mutate(
+      genome_order = if_else(is.na(genome_order) | str_trim(genome_order) == "",
+                             "Unknown", as.character(genome_order)),
+      tax_label    = if_else(is.na(tax_label)    | str_trim(tax_label)    == "",
+                             "Unknown", as.character(tax_label))
+    )
 
-  # Join taxonomy onto main df
+  # Merge on genome (df) = genome_file (tax_df)
   df <- df %>%
     left_join(tax_df, by = c("genome" = "genome_file")) %>%
-    mutate(tax_label = if_else(is.na(tax_label), "Unknown", tax_label))
+    mutate(
+      genome_order = if_else(is.na(genome_order), "Unknown", genome_order),
+      tax_label    = if_else(is.na(tax_label),    "Unknown", tax_label)
+    )
 
 } else {
-  # No taxonomy file — treat everything as one group called "All"
-  df <- df %>% mutate(tax_label = "All")
+  global_order_palette <- make_color_palette("Unknown")
+  df <- df %>% mutate(genome_order = "Unknown", tax_label = "All")
 }
 
 ############################################################
-# Build IPS_acc -> IPS_desc lookup (one desc per acc token)
+# Build IPS_acc -> IPS_desc lookup
 ############################################################
 
 ips_lookup <- df %>%
@@ -115,7 +164,7 @@ ips_lookup <- df %>%
   distinct(acc_token, .keep_all = TRUE)
 
 ############################################################
-# Representative label resolver
+# Representative label resolver (IPS description only)
 ############################################################
 
 resolve_label <- function(cluster_lbl) {
@@ -123,7 +172,6 @@ resolve_label <- function(cluster_lbl) {
 
   tokens <- str_trim(str_split(cluster_lbl, ";")[[1]])
   tokens <- tokens[tokens != "-" & tokens != ""]
-
   if (length(tokens) == 0) return(cluster_lbl)
 
   exact <- ips_lookup %>% filter(acc_token == cluster_lbl)
@@ -133,7 +181,6 @@ resolve_label <- function(cluster_lbl) {
     filter(acc_token %in% tokens) %>%
     mutate(n = sapply(acc_token, function(a) sum(tokens == a))) %>%
     arrange(desc(n))
-
   if (nrow(counts) > 0) return(counts$desc_token[1])
 
   return(cluster_lbl)
@@ -147,11 +194,11 @@ shared_theme <- theme_bw(base_size = 16) +
   theme(
     strip.text        = element_text(face = "bold", size = 14),
     strip.background  = element_rect(fill = "#e8e8e8", color = NA),
-    axis.text.y       = element_text(size = 11),
+    axis.text.y       = element_text(size = 10),
     legend.text       = element_text(size = 10),
     legend.title      = element_text(size = 12),
-    legend.spacing.y  = unit(6, "mm"),
-    legend.key.height = unit(8, "mm")
+    legend.spacing.y  = unit(4, "mm"),
+    legend.key.height = unit(6, "mm")
   )
 
 no_y_theme <- theme(
@@ -173,45 +220,65 @@ synteny_color_palette <- scale_color_gradientn(
   guide   = "none"
 )
 
+
+
 ############################################################
-# Helper: build the 1x4 combined plot for a given top-20 slice
+# Helper: build the 1x3 combined plot
+#
+#   Panel 1 - Stacked genome count bar (coloured by order)
+#             Secondary x-axis shows proportion.
+#             Y-axis ticks = wrapped IPS description.
+#   Panel 2 - |Gene Offset| boxplot + dotplot (synteny gradient)
+#   Panel 3 - |Distance (bp)| boxplot + dotplot (synteny gradient)
+#
+# Panels 2 & 3 suppress y labels (aligned via patchwork).
 ############################################################
 
-build_plot <- function(all_clusters, df_subset, total_genomes_subset, rank_by, title_suffix, taxon_label) {
+build_plot <- function(all_clusters, df_subset, total_genomes_subset,
+                       order_palette, rank_by, title_suffix, taxon_label) {
 
+  # --- Rank and factor clusters ---
   top_table <- all_clusters %>%
     arrange(desc(.data[[rank_by]])) %>%
     slice_head(n = 20) %>%
     mutate(
-      annotation_cluster = factor(
-        annotation_cluster,
-        levels = rev(annotation_cluster)
-      )
+      annotation_cluster = factor(annotation_cluster, levels = rev(annotation_cluster))
     )
 
-  top_ids           <- levels(top_table$annotation_cluster)
-  cluster_label_map <- setNames(top_table$legend_label,  top_table$annotation_cluster)
-  synteny_map       <- setNames(top_table$synteny_score, top_table$annotation_cluster)
+  top_ids     <- levels(top_table$annotation_cluster)
+  synteny_map <- setNames(top_table$synteny_score, top_table$annotation_cluster)
+
+  # Y-axis label: wrapped IPS description only (no cluster ID)
+  desc_map <- setNames(
+    str_wrap(top_table$rep_desc, width = 40),
+    top_table$annotation_cluster
+  )
 
   n_cl <- nrow(top_table)
 
-  cluster_colors <- colorRampPalette(brewer.pal(12, "Set3"))(n_cl)
-  names(cluster_colors) <- top_ids
+  # --- Stacked bar data: genomes per (cluster x order) ---
+  stacked_data <- df_subset %>%
+    filter(annotation_cluster %in% top_ids) %>%
+    mutate(annotation_cluster = factor(annotation_cluster, levels = top_ids)) %>%
+    group_by(annotation_cluster, genome_order) %>%
+    summarise(count = n_distinct(genome), .groups = "drop")
 
-  freq_long <- top_table %>%
-    tidyr::pivot_longer(
-      cols      = c(genome_count, proportion),
-      names_to  = "metric",
-      values_to = "value"
-    ) %>%
-    mutate(
-      metric = recode(metric,
-        genome_count = "Genome Count",
-        proportion   = "Genome Proportion"
-      ),
-      metric = factor(metric, levels = c("Genome Count", "Genome Proportion"))
-    )
+  # Full grid so missing order/cluster combos get 0 (clean stacking)
+  all_combinations <- expand.grid(
+    annotation_cluster = factor(top_ids, levels = top_ids),
+    genome_order       = names(order_palette),
+    stringsAsFactors   = FALSE
+  ) %>%
+    left_join(stacked_data, by = c("annotation_cluster", "genome_order")) %>%
+    mutate(count = if_else(is.na(count), 0L, count))
 
+  # Orders that actually appear (for legend breaks)
+  active_orders <- all_combinations %>%
+    filter(count > 0) %>%
+    pull(genome_order) %>%
+    unique()
+
+  # --- Raw rows for synteny panels ---
   raw <- df_subset %>%
     filter(annotation_cluster %in% top_ids) %>%
     mutate(
@@ -219,93 +286,79 @@ build_plot <- function(all_clusters, df_subset, total_genomes_subset, rank_by, t
       synteny_score      = synteny_map[as.character(annotation_cluster)]
     )
 
-  # Panel 1: Genome Count
-  p_count <- ggplot(
-      freq_long %>% filter(metric == "Genome Count"),
-      aes(y = annotation_cluster, x = value, fill = annotation_cluster)
-    ) +
-    geom_col(width = 0.7) +
+  # ---- Panel 1: Stacked genome count bar ----
+  p_stack <- ggplot(all_combinations,
+                    aes(y    = annotation_cluster,
+                        x    = count,
+                        fill = genome_order)) +
+    geom_col(width = 0.7, position = "stack") +
     scale_fill_manual(
-      values = cluster_colors,
-      labels = cluster_label_map,
-      name   = "Cluster"
+      values = order_palette,
+      name   = str_to_title(color_level),
+      breaks = active_orders
     ) +
-    scale_x_continuous(labels = comma_format(accuracy = 1)) +
-    labs(y = "Cluster ID", x = "Genome Count", title = "Genome Count") +
-    shared_theme
-
-  # Panel 2: Genome Proportion
-  p_prop <- ggplot(
-      freq_long %>% filter(metric == "Genome Proportion"),
-      aes(y = annotation_cluster, x = value, fill = annotation_cluster)
-    ) +
-    geom_col(width = 0.7) +
-    scale_fill_manual(
-      values = cluster_colors,
-      labels = cluster_label_map,
-      guide  = "none"
-    ) +
+    scale_y_discrete(labels = desc_map) +
     scale_x_continuous(
-      labels   = percent_format(accuracy = 1),
+      name     = "Genome Count",
+      labels   = comma_format(accuracy = 1),
       sec.axis = sec_axis(
-        ~ . * total_genomes_subset,
-        name   = "Genome Count",
-        labels = comma_format(accuracy = 1)
+        ~ . / total_genomes_subset,
+        name   = "Genome Proportion",
+        labels = percent_format(accuracy = 1)
       )
     ) +
-    labs(y = NULL, x = "Genome Proportion", title = "Genome Proportion") +
-    shared_theme +
-    no_y_theme
+    labs(y = NULL, title = "Genome Count / Proportion by Order") +
+    shared_theme
 
-  # Panel 3: |Gene Offset|
+  # ---- Panel 2: |Gene Offset| ----
   p_offset <- ggplot(raw,
                      aes(y     = annotation_cluster,
                          x     = gene_offset,
                          fill  = synteny_score,
                          color = synteny_score)) +
     geom_boxplot(alpha = 0.5, width = 0.7, outlier.shape = 19) +
-    geom_dotplot(binaxis = "x", stackdir = "center",
-                 dotsize = 0.06, binwidth = 1, alpha = 0.7) +
+    # geom_dotplot(binaxis  = "x", dotsize  = 0.06, binwidth = 1, alpha = 0.7) +
     synteny_palette +
     synteny_color_palette +
     scale_x_continuous(labels = comma_format(accuracy = 1)) +
-    labs(y = NULL, x = "|Gene Offset|", title = "|Gene Offset|") +
+    scale_y_discrete(labels = desc_map) +
+    labs(y = NULL, x = "Gene Offset", title = "Gene Offset") +
     shared_theme +
     no_y_theme
 
-  # Panel 4: |Distance (bp)|
+  # ---- Panel 3: |Distance (bp)| ----
   p_dist <- ggplot(raw,
                    aes(y     = annotation_cluster,
                        x     = distance_bp,
                        fill  = synteny_score,
                        color = synteny_score)) +
     geom_boxplot(alpha = 0.5, width = 0.7, outlier.shape = 19) +
-    geom_dotplot(binaxis = "x", stackdir = "center",
-                 dotsize = 0.06, binwidth = 1, alpha = 0.7) +
+    geom_dotplot(binaxis  = "x", stackdir = "center",
+                 dotsize  = 0.06, binwidth = 1, alpha = 0.7) +
     synteny_palette +
     synteny_color_palette +
     scale_x_continuous(labels = comma_format(accuracy = 1)) +
-    labs(y = NULL, x = "|Distance (bp)|", title = "|Distance (bp)|") +
+    scale_y_discrete(labels = desc_map) +
+    labs(y = NULL, x = "Distance (bp)", title = "Distance (bp)") +
     shared_theme +
     no_y_theme
 
-  plot_height <- max(8, n_cl * 0.6)
+  # ---- Combine 1x3 ----
+  plot_height <- max(8, n_cl * 0.65)
 
-  # Build title: append taxon label if not the global "All" run
   plot_title <- if (taxon_label == "All") {
     paste0("Top 20 neighborhood clusters for ", protein_name, " (", title_suffix, ")")
   } else {
     paste0("Top 20 neighborhood clusters for ", protein_name,
-           " | ", opt$tax_level, ": ", taxon_label,
-           " (", title_suffix, ")")
+           " | ", opt$tax_level, ": ", taxon_label, " (", title_suffix, ")")
   }
 
-  p_combined <- (p_count | p_prop | p_offset | p_dist) +
+  p_combined <- (p_stack | p_offset | p_dist) +
     plot_annotation(
       title = plot_title,
       theme = theme(plot.title = element_text(face = "bold", size = 20))
     ) +
-    plot_layout(widths = c(1.4, 1, 1, 1), guides = "collect") &
+    plot_layout(widths = c(1.8, 1, 1), guides = "collect") &
     theme(legend.position = "right")
 
   list(plot = p_combined, height = plot_height)
@@ -313,12 +366,6 @@ build_plot <- function(all_clusters, df_subset, total_genomes_subset, rank_by, t
 
 ############################################################
 # Helper: derive output path for a given taxon
-#
-# No taxonomy  -> original path unchanged
-# With taxonomy -> <base_dir>/<tax_level>/<taxon_name>/<filename>
-#
-# e.g. --output results/plot.png  --tax_level phylum  taxon "Proteobacteria"
-#      -> results/phylum/Proteobacteria/plot.png
 ############################################################
 
 taxon_output_path <- function(base_path, taxon_label) {
@@ -335,13 +382,12 @@ taxon_output_path <- function(base_path, taxon_label) {
 }
 
 ############################################################
-# Helper: run the full pipeline for one taxon slice
+# Helper: run full pipeline for one taxon slice
 ############################################################
 
 run_for_taxon <- function(df_slice, taxon_label) {
 
   total_genomes_subset <- df_slice %>% pull(genome) %>% unique() %>% length()
-
   cat(sprintf("  Taxon '%s': %d genomes\n", taxon_label, total_genomes_subset))
 
   all_clusters <- df_slice %>%
@@ -356,9 +402,8 @@ run_for_taxon <- function(df_slice, taxon_label) {
       .groups = "drop"
     ) %>%
     mutate(
-      proportion   = genome_count / total_genomes_subset,
-      rep_desc     = sapply(cluster_label, resolve_label),
-      legend_label = paste0(annotation_cluster, " - ", str_wrap(rep_desc, width = 50))
+      proportion = genome_count / total_genomes_subset,
+      rep_desc   = sapply(cluster_label, resolve_label)
     )
 
   if (nrow(all_clusters) == 0) {
@@ -366,19 +411,22 @@ run_for_taxon <- function(df_slice, taxon_label) {
     return(invisible(NULL))
   }
 
+  # Use the global palette built from the full genome_file before any merge losses
+  order_palette <- global_order_palette
+
   out_path1 <- taxon_output_path(opt$output,  taxon_label)
   out_path2 <- taxon_output_path(opt$output2, taxon_label)
 
   out1 <- build_plot(all_clusters, df_slice, total_genomes_subset,
-                     rank_by = "genome_count",  title_suffix = "by Genome Count",
-                     taxon_label = taxon_label)
-  ggsave(out_path1, out1$plot, width = 36, height = out1$height, dpi = 300)
+                     order_palette, rank_by = "genome_count",
+                     title_suffix = "by Genome Count", taxon_label = taxon_label)
+  ggsave(out_path1, out1$plot, width = 30, height = out1$height, dpi = 300)
   cat("  Plot saved:", out_path1, "\n")
 
   out2 <- build_plot(all_clusters, df_slice, total_genomes_subset,
-                     rank_by = "synteny_score", title_suffix = "by Synteny Score",
-                     taxon_label = taxon_label)
-  ggsave(out_path2, out2$plot, width = 36, height = out2$height, dpi = 300)
+                     order_palette, rank_by = "synteny_score",
+                     title_suffix = "by Synteny Score", taxon_label = taxon_label)
+  ggsave(out_path2, out2$plot, width = 30, height = out2$height, dpi = 300)
   cat("  Plot saved:", out_path2, "\n")
 }
 

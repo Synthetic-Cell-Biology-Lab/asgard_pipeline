@@ -36,24 +36,24 @@ echo "=============================================="
 # # 1️⃣ Alignment (MAFFT)
 # ############################################
 
-# echo "🧬 Running MAFFT alignment..."
+echo "🧬 Running MAFFT alignment..."
 
-# mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
-#     > "${PREFIX}.aligned.fasta"
+mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
+    > "${PREFIX}.aligned.fasta"
 
-# echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
+echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 
 ############################################
 # 1️⃣ Alignment (FAMSA2)
 ############################################
 
-echo "Running FAMSA2 alignment..."
+# echo "Running FAMSA2 alignment..."
 
-famsa -t "$THREADS" \
-      "$INPUT_FASTA" \
-      "${PREFIX}.aligned.fasta" 
+# famsa -t "$THREADS" \
+#       "$INPUT_FASTA" \
+#       "${PREFIX}.aligned.fasta" 
 
-echo "Alignment complete → ${PREFIX}.aligned.fasta"
+# echo "Alignment complete → ${PREFIX}.aligned.fasta"
 
 
 ############################################
@@ -68,7 +68,7 @@ echo "Alignment complete → ${PREFIX}.aligned.fasta"
 #     -o "${PREFIX}.trimmed.fasta"
 
 # echo "Trimming complete → ${PREFIX}.trimmed.fasta"
-echo "Running TrimAl -gt 0.1"
+echo "Running TrimAl -gt 0.2"
 
 trimal -in "${PREFIX}.aligned.fasta" \
     -gt 0.2 \

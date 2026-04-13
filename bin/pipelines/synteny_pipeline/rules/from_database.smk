@@ -22,3 +22,7 @@ rule get_data_from_database:
             {params.protein_column} \
             {output.csv}
         """
+
+
+
+    

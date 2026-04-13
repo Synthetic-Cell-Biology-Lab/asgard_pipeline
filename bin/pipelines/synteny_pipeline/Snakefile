@@ -12,6 +12,16 @@ import glob
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
+
+import pandas as pd
+
+genome_df = pd.read_csv(config["genome_file"])
+
+TAXA_LEVELS = config['taxa_levels']
+
+
+TAXA_DICT = {level: genome_df[level].dropna().unique().tolist()
+            for level in TAXA_LEVELS}
 PROTEIN = config["protein_name"]
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -42,14 +52,10 @@ FINAL_TARGETS = [
 
 
 FINAL_TARGETS.extend(
-    expand(
-        f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.svg", 
-            protein = config.get('gene_neighborhood_protein_sets')
-            )
-            )
-
-
-
+    expand(f"{SYNTENY_DIR}/cluster_plots/{{protein}}/{{taxa_level}}/done.txt",
+    protein = config['gene_neighborhood_protein_sets'],
+    taxa_level = config['taxa_levels'])
+)
 
 
 
@@ -174,6 +180,7 @@ rule cluster_neighborhood:
         f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv"
     conda:
         f"{config['env_dir']}/Reg.yaml"
+        
     shell:
         """
         python {CURRENT_DIR}/bin/units/cluster_neighborhood.py \
@@ -181,30 +188,28 @@ rule cluster_neighborhood:
             --column IPS_acc \
             --output {output}
         """
-    
+
 
 
 rule plot_cluster_frequency:
     input:
-        f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv"
-    output:
-        freq = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.cluster_frequency.svg",
-        syn_score = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.syntany_score.svg",
-        done = f"{SYNTENY_DIR}/cluster_plots/{{protein}}.taxa.done"
-    params:
-        tax_levels = ",".join(config.get("taxa_levels", [])),
-        output_dir = f"{SYNTENY_DIR}/cluster_plots"
+        clustered = f"{SYNTENY_DIR}/clustered_csv/{{protein}}.clustered.csv",
+        genome_file = config['genome_file']
 
+    output:
+        freq = directory(f"{SYNTENY_DIR}/cluster_plots/{{protein}}/{{taxa_level}}/cluster_freq"),
+        syn_score = directory(f"{SYNTENY_DIR}/cluster_plots/{{protein}}/{{taxa_level}}/synteny_score"),
+        done = f"{SYNTENY_DIR}/cluster_plots/{{protein}}/{{taxa_level}}/done.txt"
     conda:
         f"{config['env_dir']}/bio-r.yaml"
     shell:
         """
-        Rscript {CURRENT_DIR}/bin/units/plot_clusters.r \
-            --input {input} \
-            --output {output.freq} \
-            --output2 {output.syn_score} \
-            --extra_output_dir {params.output_dir} \
-            --tax_levels {params.tax_levels} \
-            --protein {wildcards.protein}
+        Rscript {CURRENT_DIR}/bin/units/plot_clusters2.r \
+            --input "{input.clustered}" \
+            --output "{output.freq}" \
+            --output2 "{output.syn_score}" \
+            --tax_level "{wildcards.taxa_level}" \
+            --genome_file "{input.genome_file}" \
+            --protein "{wildcards.protein}"
         touch {output.done}
         """

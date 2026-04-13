@@ -6,9 +6,9 @@
 pipeline: synteny_pipeline
 
 
-run_id: tubulin_homologs_synteny_v12
+run_id: actin_run3
 
-protein_name: tubulin
+protein_name: actin
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -20,7 +20,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To study the gene neighborhood of tubulin family proteins and its adapter"
+reason: "To study the gene neighborhood of actin family proteins"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -50,11 +50,10 @@ gbk_database: /home/anirudh/asgard_pipeline/database/cds_genomes
 
 
 gene_neighborhood_protein_sets:
-    - Tubulin
-    - FtsZ1
-    - FtsZ2
-    - CetZ
-    - SepF
+    - Actin
+    - Actin_zn
+    - Actin_700
+    - MreB_actin
 
 synteny_plot_genomes:
     - GCA_041410205.1_ASM4141020v1_genomic
