@@ -29,6 +29,27 @@ rule length_histogram:
 
 
 
+rule taxa_counts:
+    input:
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+    output:
+        plot = f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+    message:
+        """
+        ==========================================
+        📊      Taxonomic Sampling Plot
+        ==========================================
+        """
+    shell:
+        """
+        Rscript {CURRENT_DIR}/bin/units/plot_taxa_counts.r \
+            -i {input.csv} \
+            -o {output.plot} \
+        """
+
+
 
 
 ############################################

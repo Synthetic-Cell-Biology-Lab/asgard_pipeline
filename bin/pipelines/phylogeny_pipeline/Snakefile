@@ -40,9 +40,11 @@ os.makedirs(BENCHMARK_DIR, exist_ok = True)
 if config.get("parse_ips", False):
     include: "rules/parse_ips.smk"
 elif config.get("hmmsearch", False):
-    include: "rules/hmmsearch.smk" # yet to be done
+    include: "rules/hmmsearch.smk"
 elif config.get("from_manual", False):
-    include: "rules/from_manual.smk" # yet to be done
+    include: "rules/from_manual.smk"
+elif config.get("from_fasta_csv", False):
+    include: "rules/from_fasta_and_csv.smk"
 else:
     print("Must include atleast one mode of id extraction")
     sys.exit()
@@ -68,14 +70,14 @@ if config.get("run_itol_upload", False):
 # add plots
 FINAL_TARGETS.extend(
     expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.png",
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg",
         level=config.get("PLOT_TAXON_LEVELS")
     )
 )
 
 FINAL_TARGETS.extend(
     expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.png",
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg",
         level=config.get("PLOT_TAXON_LEVELS")
     )
 )
@@ -83,11 +85,17 @@ FINAL_TARGETS.extend(
 
 FINAL_TARGETS.extend(
     expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.png",
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.svg",
         level=config.get("PLOT_TAXON_LEVELS")
     )
 )
 
+
+FINAL_TARGETS.extend(
+    expand(
+        f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
+    )
+)
 
 
 FINAL_TARGETS.extend(
@@ -122,7 +130,7 @@ rule protein_copy_heatmap_unreviewed:
         csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
 
     output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.png"
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg"
 
     params:
         proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
@@ -151,7 +159,7 @@ rule plot_taxa:
         csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
 
     output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.png"
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg"
 
     params:
         y = config.get("PLOT_Y_COLUMN","protein_length"),
@@ -190,7 +198,7 @@ rule protein_copy_heatmap_reviewed:
         csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
 
     output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.png"
+        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.svg"
 
     params:
         proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])

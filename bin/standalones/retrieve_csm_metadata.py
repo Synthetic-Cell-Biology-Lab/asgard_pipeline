@@ -12,9 +12,9 @@ import json
 Entrez.email   = "anirudhbantwalbaliga@gmail.com"
 Entrez.api_key = "eed94abceca160fc601883bc7e508f604608"
 
-FASTA_FILE  = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/with_csm_seq/ftsz.95.rev.fasta"
-ASGARD_CSV  = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/extraction_exploration/ftsz_csm2.rev.csv"
-OUTPUT_CSV  = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/extraction_exploration/ftsz_csm3.rev.csv"
+FASTA_FILE  = "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_1/SepF.rev.fasta"
+ASGARD_CSV  = "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_1/extraction_exploration/SepF.rev.csv"
+OUTPUT_CSV  = "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_1/extraction_exploration/SepF_meta.rev.csv"
 
 NCBI_BATCH_SIZE = 10
 TAX_BATCH_SIZE  = 200

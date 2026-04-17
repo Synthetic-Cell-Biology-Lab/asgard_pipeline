@@ -26,13 +26,14 @@ set -euo pipefail
 # Arguments
 # -----------------------------------------------------------------------------
 
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 <annotation.csv> <taxonomy.tsv>"
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <annotation.csv> <taxonomy.tsv> <locus_tag_column_header>"
     exit 1
 fi
 
 ANNOT_CSV="$1"
 OUT_ANNOT="$2"
+ID_HEADER="$3"
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -61,7 +62,7 @@ check_tool sort
 
 # Quick sanity check: required column headers must be present in the first line
 HEADER=$(head -1 "$ANNOT_CSV")
-for COL in locus_tag class order; do
+for COL in "$ID_HEADER" domain phylum class order; do
     echo "$HEADER" | grep -q "$COL" \
         || die "Required column '$COL' not found in CSV header: $ANNOT_CSV"
 done
@@ -78,49 +79,58 @@ mkdir -p "$(dirname "$OUT_ANNOT")"
 # -----------------------------------------------------------------------------
 
 log "Extracting annotation (locus_tag, class, order) from $ANNOT_CSV..."
+awk -F',' -v id_col="$ID_HEADER" '
+BEGIN { OFS="\t" }
 
-awk -F',' '
-BEGIN {
-    OFS="\t"
-}
 NR==1 {
-    # Locate required columns by name
     for (i = 1; i <= NF; i++) {
-        # Strip surrounding whitespace/quotes from header tokens
-        h = $i; gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", h)
-        if (h == "locus_tag") l = i
-        if (h == "class")     c = i
-        if (h == "order")     o = i
+        h = $i
+        gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", h)
+
+        if (h == id_col)   l = i
+        if (h == "class")  c = i
+        if (h == "order")  o = i
+        if (h == "domain") d = i
+        if (h == "phylum") p = i
     }
-    if (!l || !c || !o) {
-        print "[ERROR] Required columns (locus_tag, class, order) not found in CSV" \
-            > "/dev/stderr"
+
+    if (!l || !c || !o || !d || !p) {
+        print "[ERROR] Required columns missing" > "/dev/stderr"
         exit 1
     }
-    print "id", "class", "order"
+
+    header = "id\tdomain\tphylum\tclass\torder"
+    print header
     next
 }
-{
-    id    = $l
-    class = $c
-    order = $o
 
-    # Strip surrounding whitespace/quotes from values
+{
+    id     = $l
+    domain = $d
+    phylum = $p
+    class  = $c
+    order  = $o
+
     gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", id)
+    gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", domain)
+    gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", phylum)
     gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", class)
     gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", order)
 
-    # Skip rows with no meaningful id
     if (id == "" || id == "NA") next
 
-    if (class == "") class = "Unknown"
-    if (order == "") order = "Unknown"
+    if (domain == "") domain = "Unknown"
+    if (phylum == "") phylum = "Unknown"
+    if (class  == "") class  = "Unknown"
+    if (order  == "") order  = "Unknown"
 
-    print id, class, order
+    print id, domain, phylum, class, order
 }
-' "$ANNOT_CSV" \
-| sort -k1,1 -u \
-> "$OUT_ANNOT"
+' "$ANNOT_CSV" | {
+    read -r header
+    echo "$header"
+    sort -k1,1 -u
+} > "$OUT_ANNOT"
 
 ANNOT_COUNT=$(( $(wc -l < "$OUT_ANNOT") - 1 ))
 log "Annotation entries written: $ANNOT_COUNT"

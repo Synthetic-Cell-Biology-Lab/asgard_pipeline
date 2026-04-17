@@ -5,13 +5,13 @@ from datetime import datetime
 # ==============================
 # 🔧 HARDCODED INPUTS
 # ==============================
-FASTA_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/extraction_exploration/ftsz.unr.fasta"
-IDS_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/extraction_exploration/ftsz2.rev.ids"
-OUTPUT_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/ftsz.rev.fasta"
-LOG_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/phylogeny_pipeline.log"
+FASTA_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2/final_phylogeny/ftsz_phylo.aligned.fasta"
+IDS_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2_run2/clade_wise/thor.ids"
+OUTPUT_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2_run2/clade_wise/thor.fasta"
+LOG_PATH = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz2_run2/phylogeny_pipeline.log"
 
 MIN_LEN = 0
-MAX_LEN = 1000
+MAX_LEN = 10000000
 
 
 # ==============================

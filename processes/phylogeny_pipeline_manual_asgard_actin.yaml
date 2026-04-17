@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: actin_run3
+run_id: actin_m3
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -65,7 +65,7 @@ rstring: null
 from_manual: True
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['Actin', 'Actin_700', 'Actin_zn', 'MreB_actin']
+manual_annotation_filter: ['Actin', 'Actin_700', 'Actin_zn', 'MreB_actin', 'arpc4']
 
 ###########################################################
 # HMMsearch mode
@@ -78,7 +78,9 @@ hmmsearch: false
 
 
 RUN_SSN: True
-
+SSN_BITSCORES: [50, 80, 100, 120, 150, 170, 200]
+copy_to_windows: True
+windows_path: /mnt/e/ssn_outputs
 
 ###########################################################
 # Biological Target
@@ -113,8 +115,8 @@ fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85
 
 # violin plot
 PLOT_Y_COLUMN: protein_length
-ymin: 100
-ymax: 1000
+ymin: 0
+ymax: 50000
 
 
 PLOT_FILTER_COLUMN: Manual_annotation
@@ -124,6 +126,7 @@ PLOT_FILTER_VALS:
   - Actin_zn
   - Actin_700
   - MreB_actin
+  - arpc4
 
 PLOT_DUAL_PROTEINS:
 
@@ -141,6 +144,7 @@ PLOT_PROTEINS_PRESENCE:
   - Actin_zn
   - Actin_700
   - MreB_actin
+  - arpc4
 
 
 
@@ -152,7 +156,7 @@ PLOT_PROTEINS_PRESENCE:
 phylogeny_threads: 12
 
 # Upload resulting tree to iTOL
-run_itol_upload: True
+run_itol_upload: False
 
 # iTOL project name
 itol_project: Asgard

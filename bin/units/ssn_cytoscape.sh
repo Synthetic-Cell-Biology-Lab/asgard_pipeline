@@ -82,8 +82,8 @@ awk 'BEGIN{OFS="\t"} {print $1, "similarity", $2}' "$EDGES" > "$SIF"
 # -----------------------------------------------------------------------------
 
 log "Writing edge attributes -> $EA"
-printf "bitscore\n" > "$EA"
-awk 'BEGIN{OFS="\t"} {print $1" (similarity) "$2, $3}' "$EDGES" >> "$EA"
+printf "Source\ttarget\tscore\n" > "$EA"
+awk 'BEGIN{OFS="\t"} {print $1, $2, $3}' "$EDGES" >> "$EA"
 
 log "Cytoscape export completed successfully."
 log "  SIF -> $SIF"

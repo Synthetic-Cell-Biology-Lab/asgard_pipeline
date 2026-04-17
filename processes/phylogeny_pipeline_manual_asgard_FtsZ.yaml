@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: ftsz_fin_v1
+run_id: ftsz_fin_v3
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -65,7 +65,7 @@ rstring: null
 from_manual: True
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['FtsZ1', 'FtsZ2', 'CetZ', 'Tubulin']
+manual_annotation_filter: ['FtsZ1', 'FtsZ2', 'CetZ', 'CetZ2', 'Tubulin', 'SepF']
 
 ###########################################################
 # HMMsearch mode
@@ -113,7 +113,7 @@ fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85
 
 # violin plot
 PLOT_Y_COLUMN: protein_length
-ymin: 250
+ymin: 0
 ymax: 1000
 
 
@@ -123,7 +123,9 @@ PLOT_FILTER_VALS:
   - FtsZ1
   - FtsZ2
   - CetZ
+  - CetZ2
   - Tubulin
+  - SepF
 
 PLOT_DUAL_PROTEINS:
   - FtsZ1
@@ -142,6 +144,8 @@ PLOT_PROTEINS_PRESENCE:
   - FtsZ2
   - Tubulin
   - CetZ
+  - CetZ2
+  - SepF
 
 
 
