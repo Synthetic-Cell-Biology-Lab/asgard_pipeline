@@ -3,7 +3,7 @@
 ###########################################################
 
 # Pipeline name to execute
-pipeline: phylogeny_pipeline
+pipeline: synteny_pipeline
 
 
 ###########################################################
@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: actin_run_ips_2
+run_id: actin_and_associated
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "To perform phylogenetic analysis for actin"
+reason: "genomic context of actin and associated proteins"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -39,32 +39,30 @@ cores: 24
 # IPS Parsing mode
 ###########################################################
 # Extract IDs from InterProScan results
-parse_ips: True
+parse_ips: False
 # Remove sequences annotated as hypothetical proteins
 remove_hypotheticals: False
 
 
-# InterProScan summary parquet database
-database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
-raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
 
 # Search Strategy
 
 # Case-insensitive substring search
-search_string: actin
+search_string: gel
 
 # Regex search pattern (set to null if unused)
 rstring: null
+
 
 ###########################################################
 # Manual annotation mode
 ###########################################################
 
 # Extract IDs from manual annotations
-from_manual: False
+from_manual: True
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['actin']
+manual_annotation_filter: ['profilin', '2dgelx', '1dgelx', '2dgel', '1dgelxx', 'gel_dynein', '3dgel', 'gel', 'Actin', 'Actin_700', 'Actin_zn', 'MreB_actin', 'arpc4']
 
 ###########################################################
 # HMMsearch mode
@@ -73,12 +71,13 @@ manual_annotation_filter: ['actin']
 # Extract IDs from HMM search
 hmmsearch: false
 
-
+from_database: True
 
 
 RUN_SSN: True
 SSN_BITSCORES: [50, 80, 100, 120, 150, 170, 200]
-
+copy_to_windows: True
+windows_path: /mnt/e/ssn_outputs
 
 ###########################################################
 # Biological Target
@@ -95,6 +94,10 @@ protein_name: actin
 # Input Files
 ###########################################################
 
+
+interproscan_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+interproscan_full: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
+
 # genome_file
 genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
 
@@ -103,6 +106,9 @@ protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/
 
 # FASTA file containing all protein sequences
 fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
+
+
+gbk_database: /home/anirudh/asgard_pipeline/database/cds_genomes
 
 
 
@@ -114,16 +120,29 @@ fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85
 # violin plot
 PLOT_Y_COLUMN: protein_length
 ymin: 0
-ymax: 1000
-
+ymax: 5000
 
 
 PLOT_FILTER_COLUMN: Manual_annotation
 
 PLOT_FILTER_VALS:
-  - actin
+  - profilin
+  - 2dgelx
+  - 1dgelx
+  - 2dgel
+  - 1dgelxx
+  - gel_dynein
+  - 3dgel
+  - gel
+  - Actin
+  - Actin_zn
+  - Actin_700
+  - MreB_actin
+  - arpc4
 
-# PLOT_DUAL_PROTEINS:
+
+PLOT_DUAL_PROTEINS:
+
 
 PLOT_TAXON_LEVELS:
   - phylum
@@ -131,11 +150,48 @@ PLOT_TAXON_LEVELS:
   - order
 
 
+taxa_levels:
+    - phylum
+    - class
+
 # presence matrix bubble plot
 
-PLOT_PROTEINS_PRESENCE:
-  - actin
+gene_neighborhood_protein_sets:
+  - profilin
+  - 2dgelx
+  - 1dgelx
+  - 2dgel
+  - 1dgelxx
+  - gel_dynein
+  - 3dgel
+  - gel
+  - Actin
+  - Actin_zn
+  - Actin_700
+  - MreB_actin
+  - arpc4
 
+
+synteny_plot_genomes:
+    - GCA_041410205.1_ASM4141020v1_genomic
+    - GCA_008000775.2_ASM800077v2_genomic
+    - GCA_001940665.2_ASM194066v2_genomic
+    # - GCA_021513715.1_ASM2151371v1_genomic
+    # - GCA_021513695.1_ASM2151369v1_genomic 
+    - GCA_054390595.1_ASM5439059v1_genomic
+    # - GCA_046482545.1_ASM4648254v1_genomic
+    - GCA_054389255.1_ASM5438925v1_genomic
+    - GCA_040225955.1_ASM4022595v1_genomic
+    - GCA_019058495.1_ASM1905849v1_genomic
+    # - GCA_019056805.1_ASM1905680v1_genomic
+    - GCA_030587435.2_ASM3058743v2_genomic
+    # - GCA_016839805.1_ASM1683980v1_genomic
+    - GCA_016839365.1_ASM1683936v1_genomic
+    # - GCA_029856435.1_ASM2985643v1_genomic
+    - GCA_018383815.1_ASM1838381v1_genomic
+    - GCA_019058315.1_ASM1905831v1_genomic
+    # - GCA_030587555.2_ASM3058755v2_genomic
+    - GCA_030587675.2_ASM3058767v2_genomic
 
 
 
@@ -153,13 +209,9 @@ run_itol_upload: True
 itol_project: Asgard
 
 # Default iTOL annotation file
-# default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
+default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
 
 
-# ssn settings
-
-copy_to_windows: True
-windows_path: "/mnt/e/ssn_outputs"
 
 
 

@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: gelsolin_run11
+run_id: gelsolin_run12
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -78,7 +78,7 @@ hmmsearch: false
 
 
 RUN_SSN: True
-SSN_BITSCORES: [50, 80, 100]
+SSN_BITSCORES: [50, 80, 100, 120, 150, 170, 200]
 
 ###########################################################
 # Biological Target

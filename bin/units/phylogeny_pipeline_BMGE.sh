@@ -36,24 +36,24 @@ echo "=============================================="
 # # 1️⃣ Alignment (MAFFT)
 # ############################################
 
-# echo "🧬 Running MAFFT alignment..."
+echo "🧬 Running MAFFT alignment..."
 
-# mafft --retree 2 --maxiterate 2 --thread "$THREADS" "$INPUT_FASTA" \
-#     > "${PREFIX}.aligned.fasta"
+mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
+    > "${PREFIX}.aligned.fasta"
 
-# echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
+echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 
 ############################################
 # 1️⃣ Alignment (FAMSA2)
 ############################################
 
-echo "Running FAMSA2 alignment..."
+# echo "Running FAMSA2 alignment..."
 
-famsa -t "$THREADS" \
-      "$INPUT_FASTA" \
-      "${PREFIX}.aligned.fasta" 
+# famsa -t "$THREADS" \
+#       "$INPUT_FASTA" \
+#       "${PREFIX}.aligned.fasta" 
 
-echo "Alignment complete → ${PREFIX}.aligned.fasta"
+# echo "Alignment complete → ${PREFIX}.aligned.fasta"
 
 
 ############################################
@@ -77,6 +77,8 @@ echo "Trimming with BMGE"
 
 bmge -i "${PREFIX}.aligned.fasta" \
      -t AA \
+     -m BLOSUM30 \
+     -b 1 \
      -o "${PREFIX}.trimmed.fasta"
 
 
@@ -89,17 +91,16 @@ echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
 echo "Running IQ-TREE3 (Model selection + ML tree)..."
 
+
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m MFP+G+C10-C60+R \
+    -m MFP+F+G \
     -bb 1000 -bnni \
     -alrt 1000 \
     -redo \
     -pre "${PREFIX}" \
-    2>&1 | tee "${PREFIX}.iqtree_console.log"
-    
-echo "✅ Phylogeny complete"
+    2>&1 | tee "${PREFIX}.log"
 
 ############################################
 # Summary

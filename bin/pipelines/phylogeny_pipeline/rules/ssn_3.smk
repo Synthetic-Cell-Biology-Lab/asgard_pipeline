@@ -10,7 +10,7 @@ rule ssn_cdhit:
         nr = f"{SSN_DIR}/{PROTEIN}.nr.fasta",
         clstr = f"{SSN_DIR}/{PROTEIN}.nr.fasta.clstr",
     params:
-        identity = config.get("SSN_IDENTITY", 0.98),
+        identity = config.get("SSN_IDENTITY", 0.95),
     threads: config.get("SSN_CORES", config.get("cores", 16))
     resources:
         mem_mb  = config.get("SSN_MEM_MB", 16000),
@@ -162,6 +162,8 @@ rule ssn_annotate:
         csv   = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
     output:
         taxonomy = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
+    params:
+        locus_tag = config.get("LOCUS_TAG", "locus_tag")
     resources:
         mem_mb  = 2000,
         runtime = 10
@@ -176,6 +178,7 @@ rule ssn_annotate:
         bash {CURRENT_DIR}/bin/units/ssn_annotate.sh \
             {input.csv}       \
             {output.taxonomy} \
+            {params.locus_tag} \
             2>&1 | tee {log}
         """
 
@@ -259,16 +262,28 @@ if config.get("copy_to_windows", False):
             clusters  = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
             fasta_dir = f"{SSN_DIR}/cluster_fastas",
             tax_annotation = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
+
         output:
-            flag = f"{SSN_DIR}/copied_to_windows.flag"
+            flag   = f"{SSN_DIR}/copied_to_windows.flag",
+            outdir = directory(f"{config['windows_path']}/{PROTEIN}/{RUN_ID}")
+
         params:
-            outdir = config["windows_path"]
+            outdir = f"{config['windows_path']}/{PROTEIN}/{RUN_ID}"
+
         shell:
-            """
-            mkdir -p {params.outdir}
-            cp {input.per_bs} {params.outdir}/
-            cp {input.nodes}  {params.outdir}/
-            cp {input.clusters} {params.outdir}/
-            cp -r {input.fasta_dir} {params.outdir}/
-            touch {output.flag}
+            r"""
+            set -euo pipefail
+
+            mkdir -p "{params.outdir}"
+
+            for f in {input.per_bs}; do
+                cp "$f" "{params.outdir}/"
+            done
+
+            cp "{input.nodes}" "{params.outdir}/"
+            cp "{input.clusters}" "{params.outdir}/"
+            cp "{input.tax_annotation}" "{params.outdir}/"
+            cp -r "{input.fasta_dir}" "{params.outdir}/"
+
+            touch "{output.flag}"
             """

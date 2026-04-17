@@ -24,4 +24,9 @@ dependencies:
   - r-patchwork
   - r-RColorBrewer
   - r-svglite
+  - r-forcats
+  - r-readr
+  - r-scales
+  - r-tibble
+  - r-ggtext
 prefix: /root/miniconda3/envs/bio-r

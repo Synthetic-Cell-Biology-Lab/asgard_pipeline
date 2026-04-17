@@ -194,8 +194,8 @@ shared_theme <- theme_bw(base_size = 16) +
   theme(
     strip.text        = element_text(face = "bold", size = 14),
     strip.background  = element_rect(fill = "#e8e8e8", color = NA),
-    axis.text.y       = element_text(size = 10),
-    legend.text       = element_text(size = 10),
+    axis.text.y       = element_text(size = 12),
+    legend.text       = element_text(size = 12),
     legend.title      = element_text(size = 12),
     legend.spacing.y  = unit(4, "mm"),
     legend.key.height = unit(6, "mm")
