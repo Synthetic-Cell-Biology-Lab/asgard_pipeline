@@ -30,10 +30,35 @@ protein_list <- gsub("^['\"]|['\"]$", "", protein_list)
 protein_list <- trimws(protein_list)
 
 # -----------------------------
+# Full taxonomic hierarchy (coarse → fine)
+# -----------------------------
+
+TAX_HIERARCHY <- c("phylum", "class", "order", "family", "genus")
+
+# Ranks that are ABOVE (i.e. ancestral to) the requested tax_level.
+# These are used to build a hierarchical sort key so that sub-taxa of
+# the same parent always appear together in the plot.
+
+tax_level_idx  <- match(tax_level, TAX_HIERARCHY)
+
+if (is.na(tax_level_idx)) {
+  stop(paste("tax_level must be one of:", paste(TAX_HIERARCHY, collapse = ", ")))
+}
+
+ancestor_ranks <- TAX_HIERARCHY[seq_len(tax_level_idx)]   # includes tax_level itself
+
+# -----------------------------
 # Load dataframe
 # -----------------------------
 
 df <- read_csv(input_csv, show_col_types = FALSE)
+
+# Check that all required columns are present
+required_cols <- c(genome_col, protein_col, ancestor_ranks)
+missing_cols  <- setdiff(required_cols, colnames(df))
+if (length(missing_cols) > 0) {
+  stop(paste("Missing columns in CSV:", paste(missing_cols, collapse = ", ")))
+}
 
 df <- df %>%
   filter(.data[[protein_col]] %in% protein_list) %>%
@@ -44,6 +69,33 @@ df[[protein_col]] <- factor(df[[protein_col]], levels = protein_list)
 cat("Rows after filtering:", nrow(df), "\n")
 cat("Unique proteins:", unique(df[[protein_col]]), "\n")
 cat("Unique taxa:", unique(df[[tax_level]]), "\n")
+
+# -----------------------------
+# Build hierarchical sort order for taxa
+#
+# For each unique taxon at `tax_level`, collect the values of every
+# ancestor rank (phylum → ... → tax_level) and paste them into a
+# single sort key, e.g. "Proteobacteria|Gammaproteobacteria|Pseudomonadales".
+# Sorting by this key groups sub-taxa of the same parent together at
+# every level of the hierarchy.
+# -----------------------------
+
+taxon_sort_df <- df %>%
+  select(all_of(ancestor_ranks)) %>%
+  distinct() %>%
+  # Replace NAs in ancestor columns with empty string so sort still works
+  mutate(across(all_of(ancestor_ranks), ~replace_na(as.character(.), ""))) %>%
+  mutate(
+    sort_key = do.call(paste, c(select(., all_of(ancestor_ranks)), sep = "|"))
+  ) %>%
+  arrange(sort_key) %>%
+  pull(.data[[tax_level]])
+
+# `taxon_sort_df` is now an ordered vector of unique taxon names,
+# grouped by shared ancestry.
+
+cat("Taxon order (hierarchical):\n")
+cat(paste(taxon_sort_df, collapse = "\n"), "\n\n")
 
 # -----------------------------
 # Count copies per genome
@@ -115,7 +167,7 @@ prop_df <- max_copy_df %>%
   mutate(copy_level_plot = if_else(is.na(copy_level), 1, copy_level))
 
 # -----------------------------
-# Row labels
+# Row labels — apply hierarchical order here
 # -----------------------------
 
 prop_df <- prop_df %>%
@@ -125,6 +177,19 @@ prop_df <- prop_df %>%
     taxon_label = paste0(taxon, " (n=", genomes, ")")
   ) %>%
   select(-ends_with(".y"))
+
+# Build ordered taxon_label vector that respects the hierarchical sort
+ordered_taxon_labels <- prop_df %>%
+  distinct(taxon, taxon_label) %>%
+  mutate(taxon = factor(taxon, levels = taxon_sort_df)) %>%
+  arrange(taxon) %>%
+  pull(taxon_label)
+
+# Apply factor with hierarchical level order (reversed so top taxon is at top of plot)
+prop_df <- prop_df %>%
+  mutate(
+    taxon_label = factor(taxon_label, levels = rev(ordered_taxon_labels))
+  )
 
 prop_df$protein <- factor(prop_df$protein, levels = protein_list)
 
@@ -152,13 +217,9 @@ text_df <- prop_df %>%
 
 # -----------------------------
 # Dot spacing
-#
-# DOT_STEP is fixed at 0.3 units — always comfortable to read.
-# Plot width grows to accommodate however many copy levels exist,
-# rather than squishing dots to fit a fixed canvas.
 # -----------------------------
 
-DOT_STEP <- 0.2   # fixed spacing between copy-level dots (data units)
+DOT_STEP <- 0.2
 
 n_proteins        <- length(protein_list)
 global_max_copies <- if (nrow(dot_df) > 0) max(dot_df$copy_level_plot) else 1
@@ -173,7 +234,6 @@ if (nrow(dot_df) > 0) {
     left_join(max_copies_per_protein, by = "protein") %>%
     mutate(
       protein_idx = match(as.character(protein), protein_list),
-      # centre the spread around the protein position
       x_offset = if_else(
         n_levels == 1,
         0,
@@ -198,7 +258,6 @@ dot_perfect  <- dot_df %>% filter(proportion == 1.0)
 dot_gradient <- dot_df %>% filter(proportion > 0 & proportion < 1.0)
 dot_empty    <- dot_df %>% filter(proportion == 0, copy_level_plot == 1)
 
-# Padding: half a cell + half the max spread width on each side
 x_expand_add <- 0.5 + (global_max_copies - 1) * DOT_STEP / 2 + 0.5
 
 # -----------------------------
@@ -269,13 +328,11 @@ p <- ggplot(prop_df, aes(y = taxon_label)) +
   )
 
 # -----------------------------
-# Save — width grows with both protein count AND max copy number
+# Save
 # -----------------------------
 
 dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
 
-# Each protein column needs room for its copy-level spread:
-# base width per protein = 1.5 inches + (max_copies - 1) * DOT_STEP inches
 col_width   <- 1.5 + (global_max_copies - 1) * DOT_STEP
 plot_width  <- max(8, 2.5 + col_width * n_proteins)
 plot_height <- max(4, 1.5 + 0.45 * length(unique(prop_df$taxon_label)))

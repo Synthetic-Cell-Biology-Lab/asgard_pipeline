@@ -262,6 +262,7 @@ if config.get("copy_to_windows", False):
             clusters  = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
             fasta_dir = f"{SSN_DIR}/cluster_fastas",
             tax_annotation = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
+            full_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
 
         output:
             flag   = f"{SSN_DIR}/copied_to_windows.flag",
@@ -283,7 +284,9 @@ if config.get("copy_to_windows", False):
             cp "{input.nodes}" "{params.outdir}/"
             cp "{input.clusters}" "{params.outdir}/"
             cp "{input.tax_annotation}" "{params.outdir}/"
+            cp "{input.full_csv}" "{params.outdir}/"
             cp -r "{input.fasta_dir}" "{params.outdir}/"
+
 
             touch "{output.flag}"
             """

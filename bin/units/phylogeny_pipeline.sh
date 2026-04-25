@@ -75,15 +75,26 @@ echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
 echo "Running IQ-TREE3 (Model selection + ML tree)..."
 
+# Step 1 — tree inference
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m MFP+G+R \
-    -bb 1000 -bnni \
+    -m LG+C40+F+R \
+    -bb 1000 -bnni -nstop 200 \
     -alrt 1000 \
+    --runs 5 \
     -redo \
     -pre "${PREFIX}" \
     2>&1 | tee "${PREFIX}.iqtree_console.log"
+
+# Step 2 — sCF annotation on the resulting tree
+iqtree3 \
+    -t "${PREFIX}.treefile" \
+    -s "${PREFIX}.trimmed.fasta" \
+    --scf 100 \
+    -pre "${PREFIX}.cf" \
+    -T AUTO \
+    2>&1 | tee "${PREFIX}.scf.log"
     
 echo "✅ Phylogeny complete"
 

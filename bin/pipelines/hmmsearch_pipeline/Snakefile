@@ -90,21 +90,47 @@ rule resolve_pfam_ids:
     output:
         PFAM_IDS_FILE
     params:
-        names=PFAM_NAMES
+        names=config["pfam"].get("names", []),
+        ids=config["pfam"].get("ids", [])
     run:
         mapping = {}
 
+        # Load NAME → ACC mapping
         with open(input[0]) as f:
             for line in f:
                 name, acc = line.strip().split("\t")
                 mapping[name] = acc
 
-        with open(output[0], "w") as out:
+        final_ids = set()
+
+        # -------------------------
+        # 1. Direct HMM IDs
+        # -------------------------
+        if params.ids:
+            print(f"Using direct HMM IDs: {params.ids}")
+            for pid in params.ids:
+                final_ids.add(pid)
+
+        # -------------------------
+        # 2. Resolve search terms
+        # -------------------------
+        if params.names:
+            print(f"Resolving names: {params.names}")
             for name in params.names:
                 if name in mapping:
-                    out.write(mapping[name] + "\n")
+                    final_ids.add(mapping[name])
                 else:
                     print(f"WARNING: {name} not found in Pfam mapping")
+
+        # -------------------------
+        # 3. Write output
+        # -------------------------
+        if not final_ids:
+            raise ValueError("No valid PFAM IDs found from names or ids")
+
+        with open(output[0], "w") as out:
+            for pid in sorted(final_ids):
+                out.write(pid + "\n")
 
 # -------------------------------
 # Extract HMMs using hmmfetch

@@ -100,9 +100,11 @@ echo "=============================================="
 echo ""
 } >> "$LOG_FILE"
 
-
-
-
+# Replace the conda init block with:
+source /root/miniconda3/etc/profile.d/conda.sh
+export CONDA_EXE="/root/miniconda3/bin/conda"
+export PATH="/root/miniconda3/condabin:$PATH"  # condabin not bin!
+conda activate snakemake
 
 # -------------------------------
 # Run Snakemake
@@ -115,6 +117,7 @@ snakemake \
   --use-conda \
   --cores "$CORES" \
   --printshellcmds \
+  --conda-frontend conda \
   --verbose \
   2>&1 | tee -a "$LOG_FILE"
 

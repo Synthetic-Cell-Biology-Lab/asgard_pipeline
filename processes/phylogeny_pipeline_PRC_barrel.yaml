@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: SepF_FFC3
+run_id: PRC_run1
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
@@ -23,7 +23,7 @@ env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 
 # Description or purpose of the run
-reason: "Cluster SepFs from retrieved and Asgard"
+reason: "To perform phylogenetic analysis for PRC-barrel domain"
 
 # Number of CPU cores available for the workflow
 cores: 24
@@ -39,7 +39,7 @@ cores: 24
 # IPS Parsing mode
 ###########################################################
 # Extract IDs from InterProScan results
-parse_ips: False
+parse_ips: True
 # Remove sequences annotated as hypothetical proteins
 remove_hypotheticals: False
 
@@ -51,7 +51,7 @@ raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/
 # Search Strategy
 
 # Case-insensitive substring search
-search_string: SepF
+search_string: PRC
 
 # Regex search pattern (set to null if unused)
 rstring: null
@@ -65,7 +65,7 @@ rstring: null
 from_manual: False
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['SepF']
+manual_annotation_filter: ['PRC']
 
 ###########################################################
 # HMMsearch mode
@@ -74,17 +74,12 @@ manual_annotation_filter: ['SepF']
 # Extract IDs from HMM search
 hmmsearch: false
 
-from_fasta_csv: True
-INPUT_CSV: /home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF_meta.rev.csv
-INPUT_FASTA: /home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF.unr.fasta
-INPUT_DOMAINS: /home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF_itol_domains
-LOCUS_TAG: "seq_id"
 
 
 
 RUN_SSN: True
-copy_to_windows: True
-windows_path: /mnt/e/ssn_outputs
+SSN_BITSCORES: [50, 80, 100]
+
 ###########################################################
 # Biological Target
 ###########################################################
@@ -93,7 +88,7 @@ windows_path: /mnt/e/ssn_outputs
 
 
 # Target protein or family name
-protein_name: SepF
+protein_name: PRC-barrel
 
 
 ###########################################################
@@ -119,16 +114,16 @@ fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85
 # violin plot
 PLOT_Y_COLUMN: protein_length
 ymin: 0
-ymax: 1000
+ymax: 5000
+
 
 
 PLOT_FILTER_COLUMN: Manual_annotation
 
 PLOT_FILTER_VALS:
-  - SepF
+  - PRC
 
-PLOT_DUAL_PROTEINS:
-  - SepF
+# PLOT_DUAL_PROTEINS:
 
 PLOT_TAXON_LEVELS:
   - phylum
@@ -139,7 +134,7 @@ PLOT_TAXON_LEVELS:
 # presence matrix bubble plot
 
 PLOT_PROTEINS_PRESENCE:
-  - SepF
+  - PRC
 
 
 
@@ -158,9 +153,13 @@ run_itol_upload: True
 itol_project: Asgard
 
 # Default iTOL annotation file
-default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
+# default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
 
 
+# ssn settings
+
+copy_to_windows: True
+windows_path: "/mnt/e/ssn_outputs"
 
 
 

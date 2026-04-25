@@ -4,9 +4,10 @@ channels:
   - bioconda
   - defaults
 dependencies:
+  - python=3.11
   - pandas
   - fastparquet
   - pyarrow
   - duckdb
   - biopython
-prefix: /root/miniconda3/envs/duckdb_handler
+

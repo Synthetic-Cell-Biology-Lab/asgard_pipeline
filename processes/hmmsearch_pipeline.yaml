@@ -28,8 +28,8 @@ project:
 
 pfam:
   hmm_db: "/home/anirudh/asgard_pipeline/database/pfam/Pfam-A.hmm"
-  names:
-    - PRC
+  names: 
+  ids: ["PF05239"]
 
 database:
   # fasta: "/home/anirudh/asgard_pipeline/database/other_organisms/pullulans/GCF_000721785.1_Aureobasidium_pullulans_var._pullulans_EXF-150_assembly_version_1.0_protein.faa"

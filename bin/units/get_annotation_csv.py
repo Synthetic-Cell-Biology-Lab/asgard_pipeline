@@ -13,6 +13,7 @@ protein_csv = sys.argv[2]
 cluster_csv = sys.argv[3]
 domain_tsv = sys.argv[4]
 output_csv = sys.argv[5]
+SEQ_ID = sys.argv[6]
 
 ############################################
 # Extract protein IDs from FASTA
@@ -38,7 +39,7 @@ print(f"[INFO] Proteins in CSV: {len(df)}")
 # Filter rows by FASTA proteins
 ############################################
 
-filtered = df[df["locus_tag"].isin(protein_ids)]
+filtered = df[df[SEQ_ID].isin(protein_ids)]
 
 print(f"[INFO] Proteins retained: {len(filtered)}")
 
@@ -47,7 +48,7 @@ print(f"[INFO] Proteins retained: {len(filtered)}")
 ############################################
 
 taxonomy_columns = [
-    "locus_tag",
+    SEQ_ID,
     "domain",
     "phylum",
     "class",
@@ -70,11 +71,11 @@ cluster_df = pd.read_csv(cluster_csv)
 
 print(f"[INFO] Cluster entries: {len(cluster_df)}")
 
-merged = pd.merge(filtered, cluster_df, left_on='locus_tag', right_on="id", how="left")
+merged = pd.merge(filtered, cluster_df, left_on=SEQ_ID, right_on="id", how="left")
 
 domain_df = pd.read_csv(domain_tsv, sep = "\t")
 
-merged2 = pd.merge(merged,domain_df, left_on = 'locus_tag', right_on = "protein", how = "left")
+merged2 = pd.merge(merged,domain_df, left_on = SEQ_ID, right_on = "protein", how = "left")
 
 ############################################
 # Write output

@@ -1,5 +1,8 @@
-import duckdb
 import sys
+print("PYTHON:", sys.executable)
+
+
+import duckdb
 import os
 import random
 import pandas as pd
