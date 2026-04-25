@@ -21,6 +21,11 @@ rule parse_ips:
         Running parse_ips
         ===============================
         """
+    # run:
+    #     import sys
+    #     print(sys.executable)
+    #     print(sys.path)
+        
     script:
         f"{CURRENT_DIR}/bin/units/parse_ips4.py"
 

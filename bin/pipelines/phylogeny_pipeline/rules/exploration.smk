@@ -108,6 +108,8 @@ rule df_for_annotation:
         domains = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv"
     output:
         annot_csv = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
+    params:
+        seq_id = config.get("LOCUS_TAG", "locus_tag")
     conda:
         f"{config['env_dir']}/Reg.yaml"
     shell:
@@ -117,7 +119,8 @@ rule df_for_annotation:
                 {input.protein_csv} \
                 {input.cluster_csv} \
                 {input.domains} \
-                {output.annot_csv}        
+                {output.annot_csv} \
+                {params.seq_id}      
         
         """
 
@@ -143,13 +146,15 @@ rule table2itol:
         done_annot = touch(f"{PHYLO_DIR}/annotation.done.flag")
     conda:
         f"{config['env_dir']}/bio-r.yaml"
+    params:
+        LOCUS_TAG = config.get("LOCUS_TAG", "locus_tag")
     shell:
         """
         mkdir -p {output.annotation_dir}
 
         Rscript {CURRENT_DIR}/bin/units/table2itol.R \
-            -i locus_tag \
-            -l locus_tag \
+            -i {params.LOCUS_TAG} \
+            -l {params.LOCUS_TAG} \
             -s "," \
             -D {output.annotation_dir} \
             {input.annot}

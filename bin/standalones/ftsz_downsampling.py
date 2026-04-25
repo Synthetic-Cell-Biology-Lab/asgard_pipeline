@@ -6,12 +6,12 @@ from Bio import SeqIO
 # =========================
 # INPUTS
 # =========================
-CSV_FILE = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/extraction_exploration/ftsz.rev.csv"
-FASTA_FILE = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/ftsz.rev.fasta"
-OUT_DIR = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/mmseqs_tmp"
+CSV_FILE = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz1_msa/extraction_exploration/ftsz.rev.csv"
+FASTA_FILE = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz1_msa/ftsz.rev.fasta"
+OUT_DIR = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz1_msa/mmseqs_tmp"
 
-OUT_CSV = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/ftsz.rep.rev.csv"
-OUT_FASTA = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz_fin_v1/ftsz.rep.rev.fasta"
+OUT_CSV = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz1_msa/ftsz.rep.rev.csv"
+OUT_FASTA = "/home/anirudh/asgard_pipeline/database/protein_sets/ftsz/ftsz1_msa/ftsz.rep.rev.fasta"
 
 os.makedirs(OUT_DIR, exist_ok=True)
 

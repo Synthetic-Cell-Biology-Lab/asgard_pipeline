@@ -8,6 +8,9 @@ import shutil
 import sys
 import glob
 
+
+shell.executable("/bin/bash")
+
 # Expect config from CLI
 if not config:
     raise ValueError("No config provided. Use --configfile.")
@@ -247,7 +250,7 @@ rule run_phylogeny:
         """
     shell:
         """
-        bash bin/units/phylogeny_pipeline_trimal.sh \
+        bash bin/units/phylogeny_pipeline.sh \
             {input.fasta} \
             {params.prefix} \
             {threads}

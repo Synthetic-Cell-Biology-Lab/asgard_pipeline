@@ -6,7 +6,7 @@
 pipeline: synteny_pipeline
 
 
-run_id: tubulin_homologs_synteny_v12
+run_id: tubulin_homologs_synteny_v13
 
 protein_name: tubulin
 
@@ -54,12 +54,29 @@ gene_neighborhood_protein_sets:
     - FtsZ1
     - FtsZ2
     - CetZ
+    - CetZ2
     - SepF
 
 synteny_plot_genomes:
     - GCA_041410205.1_ASM4141020v1_genomic
     - GCA_008000775.2_ASM800077v2_genomic
     - GCA_001940665.2_ASM194066v2_genomic
+    # - GCA_021513715.1_ASM2151371v1_genomic
+    # - GCA_021513695.1_ASM2151369v1_genomic 
+    - GCA_054390595.1_ASM5439059v1_genomic
+    # - GCA_046482545.1_ASM4648254v1_genomic
+    - GCA_054389255.1_ASM5438925v1_genomic
+    - GCA_040225955.1_ASM4022595v1_genomic
+    - GCA_019058495.1_ASM1905849v1_genomic
+    # - GCA_019056805.1_ASM1905680v1_genomic
+    - GCA_030587435.2_ASM3058743v2_genomic
+    # - GCA_016839805.1_ASM1683980v1_genomic
+    - GCA_016839365.1_ASM1683936v1_genomic
+    # - GCA_029856435.1_ASM2985643v1_genomic
+    - GCA_018383815.1_ASM1838381v1_genomic
+    - GCA_019058315.1_ASM1905831v1_genomic
+    # - GCA_030587555.2_ASM3058755v2_genomic
+    - GCA_030587675.2_ASM3058767v2_genomic
 
 
 

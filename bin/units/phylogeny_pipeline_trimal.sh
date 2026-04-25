@@ -67,7 +67,7 @@ echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 #     -m kpic-smart-gap \
 #     -o "${PREFIX}.trimmed.fasta"
 
-# echo "Trimming complete → ${PREFIX}.trimmed.fasta"
+echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 echo "Running TrimAl -gt 0.2"
 
 trimal -in "${PREFIX}.aligned.fasta" \
@@ -76,23 +76,53 @@ trimal -in "${PREFIX}.aligned.fasta" \
 
 
 
-echo "Trimming complete → ${PREFIX}.trimmed.fasta"
+# echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
 ############################################
 # 3️⃣ Model Selection + 4️⃣ ML Tree (IQ-TREE3)
 ############################################
 
-echo "Running IQ-TREE3 (Model selection + ML tree) (MFP+G+R)..."
+# iqtree3 \
+#     -s "${PREFIX}.trimmed.fasta" \
+#     -T 4 \
+#     -m LG+G \
+#     -redo \
+#     -pre "${PREFIX}_guide" \
+#     2>&1 | tee "${PREFIX}_guide.log"
 
+
+echo "Running IQ-TREE3 (Model selection + ML tree)..."
+
+# Step 1 — tree inference
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m MFP+G+C10-C60+R \
-    -bb 1000 -bnni \
+    -m LG+C40+F+R \
+    -bb 1000 -bnni -nstop 200 \
     -alrt 1000 \
+    --runs 5 \
     -redo \
     -pre "${PREFIX}" \
     2>&1 | tee "${PREFIX}.iqtree_console.log"
+
+# Step 2 — sCF annotation on the resulting tree
+iqtree3 \
+    -t "${PREFIX}.treefile" \
+    -s "${PREFIX}.trimmed.fasta" \
+    --scf 100 \
+    -pre "${PREFIX}.cf" \
+    -T AUTO \
+    2>&1 | tee "${PREFIX}.scf.log"
+    
+echo "✅ Phylogeny complete"
+
+    
+echo "✅ Phylogeny complete"
+
+
+
+echo "Running IQ-TREE3 (Model selection + ML tree) (MFP+G+R)..."
+
     
 echo "✅ Phylogeny complete"
 

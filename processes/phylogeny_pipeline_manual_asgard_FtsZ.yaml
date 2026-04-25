@@ -11,7 +11,7 @@ pipeline: phylogeny_pipeline
 ###########################################################
 
 # Identifier for this run (timestamp used if omitted)
-run_id: ftsz_fin_v3
+run_id: ftsz_fin_v4
 
 # Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
