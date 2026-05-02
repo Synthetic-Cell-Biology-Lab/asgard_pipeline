@@ -46,7 +46,9 @@ os.makedirs(SYNTENY_DIR, exist_ok=True)
 
 FINAL_TARGETS = [
     f"{RESULT_DIR}/synteny_pipeline.log",
-    f"{SYNTENY_DIR}/{RUN_ID}.synteny.html"
+    f"{SYNTENY_DIR}/{RUN_ID}.synteny.html",
+    f"{SYNTENY_DIR}/{RUN_ID}.top_genomes_per_class.csv",
+    f"{SYNTENY_DIR}/{RUN_ID}.top_quality_genomes_per_class.csv"
     
 ]
 
@@ -81,6 +83,45 @@ else:
     print("Must include atleast one mode of id extraction")
     sys.exit()
 
+rule top_genome_by_quality_per_class:
+    input:
+        genome_file = config["genome_file"]
+    output:
+        f"{SYNTENY_DIR}/{RUN_ID}.top_quality_genomes_per_class.csv"
+    params:
+        taxa_levels = ",".join(config["taxa_levels"]),
+        completeness_col = config.get("completeness_col", "completeness"),
+        contamination_col = config.get("contamination_col", "contamination")
+    conda:
+        f"{config['env_dir']}/duckdb_handler.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/top_quality_genome_per_class.py \
+            --genome_file {input.genome_file} \
+            --taxa_levels {params.taxa_levels} \
+            --completeness_col {params.completeness_col} \
+            --contamination_col {params.contamination_col} \
+            --output {output}
+        """
+
+rule top_genome_per_class:
+    input:
+        csv = f"{SYNTENY_DIR}/{RUN_ID}.synteny.csv",
+        genome_file = config["genome_file"]
+    output:
+        f"{SYNTENY_DIR}/{RUN_ID}.top_genomes_per_class.csv"
+    params:
+        taxa_levels = ",".join(config["taxa_levels"])
+    conda:
+        f"{config['env_dir']}/duckdb_handler.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/top_genome_per_class.py \
+            --synteny_csv {input.csv} \
+            --genome_file {input.genome_file} \
+            --taxa_levels {params.taxa_levels} \
+            --output {output}
+        """
 
 
 rule get_and_modify_gbk:
@@ -101,7 +142,7 @@ rule get_and_modify_gbk:
         """
     shell:
         """
-        python {CURRENT_DIR}/bin/units/extract_synteny.py \
+        python {CURRENT_DIR}/bin/units/extract_synteny_2.py \
             --input_csv {input.csv} \
             --genome {wildcards.genome} \
             --database_path {params.gbk_database_path} \

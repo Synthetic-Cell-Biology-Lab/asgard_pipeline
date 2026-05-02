@@ -36,12 +36,12 @@ echo "=============================================="
 # # 1️⃣ Alignment (MAFFT)
 # ############################################
 
-echo "🧬 Running MAFFT alignment..."
+# echo "🧬 Running MAFFT alignment..."
 
-mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
-    > "${PREFIX}.aligned.fasta"
+# mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
+#     > "${PREFIX}.aligned.fasta"
 
-echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
+# echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 
 ############################################
 # 1️⃣ Alignment (FAMSA2)
@@ -67,12 +67,12 @@ echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 #     -m kpic-smart-gap \
 #     -o "${PREFIX}.trimmed.fasta"
 
-echo "Trimming complete → ${PREFIX}.trimmed.fasta"
-echo "Running TrimAl -gt 0.2"
+# echo "Trimming complete → ${PREFIX}.trimmed.fasta"
+# echo "Running TrimAl -gt 0.2"
 
-trimal -in "${PREFIX}.aligned.fasta" \
-    -gt 0.2 \
-    -out "${PREFIX}.trimmed.fasta"
+# trimal -in "${PREFIX}.aligned.fasta" \
+#     -gt 0.2 \
+#     -out "${PREFIX}.trimmed.fasta"
 
 
 
@@ -101,7 +101,6 @@ iqtree3 \
     -bb 1000 -bnni -nstop 200 \
     -alrt 1000 \
     --runs 5 \
-    -redo \
     -pre "${PREFIX}" \
     2>&1 | tee "${PREFIX}.iqtree_console.log"
 
