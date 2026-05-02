@@ -6,7 +6,7 @@
 pipeline: synteny_pipeline
 
 
-run_id: tubulin_homologs_synteny_v13
+run_id: tubulin_homologs_synteny_v17
 
 protein_name: tubulin
 
@@ -58,26 +58,34 @@ gene_neighborhood_protein_sets:
     - SepF
 
 synteny_plot_genomes:
-    - GCA_041410205.1_ASM4141020v1_genomic
-    - GCA_008000775.2_ASM800077v2_genomic
-    - GCA_001940665.2_ASM194066v2_genomic
-    # - GCA_021513715.1_ASM2151371v1_genomic
-    # - GCA_021513695.1_ASM2151369v1_genomic 
-    - GCA_054390595.1_ASM5439059v1_genomic
-    # - GCA_046482545.1_ASM4648254v1_genomic
-    - GCA_054389255.1_ASM5438925v1_genomic
-    - GCA_040225955.1_ASM4022595v1_genomic
-    - GCA_019058495.1_ASM1905849v1_genomic
-    # - GCA_019056805.1_ASM1905680v1_genomic
-    - GCA_030587435.2_ASM3058743v2_genomic
-    # - GCA_016839805.1_ASM1683980v1_genomic
-    - GCA_016839365.1_ASM1683936v1_genomic
-    # - GCA_029856435.1_ASM2985643v1_genomic
-    - GCA_018383815.1_ASM1838381v1_genomic
-    - GCA_019058315.1_ASM1905831v1_genomic
-    # - GCA_030587555.2_ASM3058755v2_genomic
-    - GCA_030587675.2_ASM3058767v2_genomic
+    - GCA_054381415.1_ASM5438141v1_genomic # heim aukensis containing no cetz2 but cetz
+    - GCA_029882335.1_ASM2988233v1_genomic # kariarcheaceae containing tubulin and cetz2 
+    - GCA_015523565.1_ASM1552356v1_genomic # kariarchaeaceae containing cetz2 (2)
+    - GCA_030611665.1_ASM3061166v1_genomic # heimdallarchaeales containing 2 sepf
+    - GCA_054389675.1_ASM5438967v1_genomic # hodarchaeales containing 3 cetz
+    - GCA_046759345.1_ASM4675934v1_genomic # hod with 2 ftsz1
+    - GCA_027053755.1_ASM2705375v1_genomic # hodarchaeales containing 2 sepf
+    - GCA_011364945.1_ASM1136494v1_genomic # regular JABLT10
+    - GCA_040225955.1_ASM4022595v1_genomic # asgardarchaeales containing all 4
+    - GCA_052584985.1_ASM5258498v1_genomic # asgardarchaeales lacking FtsZ1
+    - GCA_037308085.1_ASM3730808v1_genomic # atabeyarchaeales
+    - GCA_016840465.1_ASM1684046v1_genomic # baldr
+    - GCA_048938295.1_ASM4893829v1_genomic # hermod quality
+    - GCA_038871775.1_ASM3887177v1_genomic # jordi best quality
+    - GCA_025839675.1_ASM2583967v1_genomic # ossiferum
+    - GCA_008000775.2_ASM800077v2_genomic # syntrophicum
+    - GCA_048886165.1_ASM4888616v1_genomic # Sigyn with 2 ftsz1
+    - GCA_054390415.1_ASM5439041v1_genomic # sigyn with cetz
+    - GCA_005191425.1_ASM519142v1_genomic # helarchaeales
+    - GCA_011365055.1_ASM1136505v1_genomic # hela with sepf
+    - GCA_026993975.1_ASM2699397v1_genomic # Njord
+    - GCA_001940665.2_ASM194066v2_genomic # LCB_4
+    - GCA_019057385.1_ASM1905738v1_genomic # Borr
+    - GCA_054389515.1_ASM5438951v1_genomic # Thor with 2 CetZ
+    - GCA_016840425.1_ASM1684042v1_genomic # wukongarchaea 1 sepf 1 ftsz1
 
+completeness_col: Completeness
+contamination_col: Contamination
 
 
 
@@ -86,3 +94,5 @@ nucleotide_window: 5000
 taxa_levels:
     - phylum
     - class
+    - order
+    - family
