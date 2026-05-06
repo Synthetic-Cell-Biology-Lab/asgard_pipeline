@@ -1,70 +1,47 @@
-###########################################################
-# Pipeline
-###########################################################
-
-# Pipeline name to execute
+---
 pipeline: synteny_pipeline
-
-
 run_id: actin_run3
-
 protein_name: actin
-
-# Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
-
-# Conda environment directory
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
-
-# Directory for pipeline logs
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-
-# Description or purpose of the run
-reason: "To study the gene neighborhood of actin family proteins"
-
-# Number of CPU cores available for the workflow
+reason: To study the gene neighborhood of actin family proteins
 cores: 24
-
-
-# mode selection:
 from_existing_dir: false
-# parent_dir: /home/anirudh/asgard_pipeline/database/protein_sets/ftsz/Asgard_tubulin_homologs
-
-
-from_database: True
-
-interproscan_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
-interproscan_full: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
-
-# genome_file
-genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
-
-# Master protein annotation table
-protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
-
-# FASTA file containing all protein sequences
-fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
-
-
-gbk_database: /home/anirudh/asgard_pipeline/database/cds_genomes
-
-
+from_database: true
+interproscan_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
+interproscan_full: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
+genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
+protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+gbk_database: "/home/anirudh/asgard_pipeline/database/cds_genomes"
 gene_neighborhood_protein_sets:
-    - Actin
-    - Actin_zn
-    - Actin_700
-    - MreB_actin
-
+- Actin
+- Actin_zn
+- Actin_700
+- MreB_actin
 synteny_plot_genomes:
-    - GCA_041410205.1_ASM4141020v1_genomic
-    - GCA_008000775.2_ASM800077v2_genomic
-    - GCA_001940665.2_ASM194066v2_genomic
-
-
-
-
+- GCA_041410205.1_ASM4141020v1_genomic
+- GCA_008000775.2_ASM800077v2_genomic
+- GCA_001940665.2_ASM194066v2_genomic
 nucleotide_window: 5000
-
 taxa_levels:
-    - phylum
-    - class
+- phylum
+- class
+run:
+  id: actin_run3
+  base_dir: "/home/anirudh/asgard_pipeline"
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  cores: 24
+  reason: To study the gene neighborhood of actin family proteins
+inputs:
+  genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
+  protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+  fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+  gbk_database: "/home/anirudh/asgard_pipeline/database/cds_genomes"
+modes:
+  from_database:
+    enabled: true
+plot: {}
+phylogeny: {}

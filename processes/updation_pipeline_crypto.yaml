@@ -1,22 +1,25 @@
-
-
+---
 pipeline: updation
-
 run_id: Cryptococcus_neoformans
-
 output_dir: "/home/anirudh/asgard_pipeline/database/other_organisms"
-
-
-log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs
-reason: "retrieval of Cryptococcus neoformans genomes for FC"
+log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
+reason: retrieval of Cryptococcus neoformans genomes for FC
 cores: 16
-env_dir: /home/anirudh/asgard_pipeline/bin/envs
-
-
+env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 organisms:
-  - name: "cryptococcus neoformans"
-    taxon: "cryptococcus neoformans"
-    domain: "eukaryote"
-    assembly_level:
-    - complete
-    refseq_only: false
+- name: cryptococcus neoformans
+  taxon: cryptococcus neoformans
+  domain: eukaryote
+  assembly_level:
+  - complete
+  refseq_only: false
+run:
+  id: Cryptococcus_neoformans
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
+  cores: 16
+  reason: retrieval of Cryptococcus neoformans genomes for FC
+inputs: {}
+modes: {}
+plot: {}
+phylogeny: {}
