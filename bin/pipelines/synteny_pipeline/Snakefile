@@ -9,6 +9,58 @@ import sys
 import glob
 
 # Expect config from CLI
+
+def _cfg_get(path, default=None):
+    cur = config
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return default
+        cur = cur[key]
+    return cur
+
+
+def _cfg_sync(flat_key, nested_path, default=None):
+    nested_val = _cfg_get(nested_path, None)
+    if nested_val is not None and flat_key not in config:
+        config[flat_key] = nested_val
+    elif flat_key in config and nested_val is None:
+        cur = config
+        for key in nested_path[:-1]:
+            cur = cur.setdefault(key, {})
+        cur[nested_path[-1]] = config[flat_key]
+    elif flat_key not in config and nested_val is None and default is not None:
+        config[flat_key] = default
+
+
+_cfg_sync("run_id", ["run", "id"])
+_cfg_sync("base_dir", ["run", "base_dir"])
+_cfg_sync("env_dir", ["run", "env_dir"])
+_cfg_sync("log_dir", ["run", "log_dir"])
+_cfg_sync("pipeline_log", ["run", "pipeline_log"])
+_cfg_sync("cores", ["run", "cores"])
+_cfg_sync("database", ["inputs", "database"])
+_cfg_sync("raw_database", ["inputs", "raw_database"])
+_cfg_sync("genome_file", ["inputs", "genome_file"])
+_cfg_sync("protein_file", ["inputs", "protein_file"])
+_cfg_sync("fasta_file", ["inputs", "fasta_file"])
+_cfg_sync("parse_ips", ["modes", "parse_ips", "enabled"])
+_cfg_sync("hmmsearch", ["modes", "hmmsearch", "enabled"])
+_cfg_sync("from_manual", ["modes", "from_manual", "enabled"])
+_cfg_sync("from_database", ["modes", "from_database", "enabled"])
+_cfg_sync("from_existing_folder", ["modes", "from_existing_folder", "enabled"])
+_cfg_sync("search_string", ["modes", "search", "search_string"])
+_cfg_sync("rstring", ["modes", "search", "rstring"])
+_cfg_sync("phylogeny_threads", ["phylogeny", "threads"])
+_cfg_sync("run_itol_upload", ["phylogeny", "run_itol_upload"])
+_cfg_sync("itol_project", ["phylogeny", "itol_project"])
+_cfg_sync("PLOT_Y_COLUMN", ["plot", "y_column"])
+_cfg_sync("PLOT_FILTER_COLUMN", ["plot", "filter_column"])
+_cfg_sync("PLOT_FILTER_VALS", ["plot", "filter_values"])
+_cfg_sync("PLOT_TAXON_LEVELS", ["plot", "taxon_levels"])
+_cfg_sync("PLOT_PROTEINS_PRESENCE", ["plot", "proteins_presence"])
+_cfg_sync("ymin", ["plot", "ymin"])
+_cfg_sync("ymax", ["plot", "ymax"])
+
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
