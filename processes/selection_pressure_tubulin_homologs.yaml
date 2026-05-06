@@ -1,49 +1,32 @@
-# Pipeline name to execute
+---
 pipeline: selection_pressure_pipeline
-
-###########################################################
-# Run Metadata
-###########################################################
-
 protein_name: FtsZ
-
-# Identifier for this run (timestamp used if omitted)
 run_id: Asgard_tubulin_homologs_7
-
-# Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
-
-# Conda environment directory
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
-
-# Directory for pipeline logs
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-
-# Description or purpose of the run
-reason: "To test selection pressure pipeline"
-
-# Number of CPU cores available for the workflow
+reason: To test selection pressure pipeline
 cores: 24
-
-
-
-PROTEIN_IDS_PATH: /home/anirudh/asgard_pipeline/database/protein_sets/protein_ids
-
-
-CDS_FILES_PATH: /home/anirudh/asgard_pipeline/database/cds_genomes
-
-PROTEIN_FILE: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
-
-
-GENOME_FILE: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
-
+PROTEIN_IDS_PATH: "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids"
+CDS_FILES_PATH: "/home/anirudh/asgard_pipeline/database/cds_genomes"
+PROTEIN_FILE: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+GENOME_FILE: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
 PROTEINS:
-  - CetZ
-  - FtsZ1
-  - FtsZ2
-  - Tubulin
-  - SepF
-
-
-
-
+- CetZ
+- FtsZ1
+- FtsZ2
+- Tubulin
+- SepF
+run:
+  id: Asgard_tubulin_homologs_7
+  base_dir: "/home/anirudh/asgard_pipeline"
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  cores: 24
+  reason: To test selection pressure pipeline
+inputs:
+  CDS_FILES_PATH: "/home/anirudh/asgard_pipeline/database/cds_genomes"
+  PROTEIN_FILE: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+modes: {}
+plot: {}
+phylogeny: {}
