@@ -1,172 +1,87 @@
-###########################################################
-# Pipeline
-###########################################################
-
-# Pipeline name to execute
+---
 pipeline: phylogeny_pipeline
-
-
-###########################################################
-# Run Metadata
-###########################################################
-
-# Identifier for this run (timestamp used if omitted)
 run_id: SepF_FFC3
-
-# Base directory for the pipeline
 base_dir: "/home/anirudh/asgard_pipeline"
-
-# Conda environment directory
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
-
-# Directory for pipeline logs
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-
-# Description or purpose of the run
-reason: "Cluster SepFs from retrieved and Asgard"
-
-# Number of CPU cores available for the workflow
+reason: Cluster SepFs from retrieved and Asgard
 cores: 24
-
-
-###########################################################
-# ID Extraction Mode
-###########################################################
-
-
-
-###########################################################
-# IPS Parsing mode
-###########################################################
-# Extract IDs from InterProScan results
-parse_ips: False
-# Remove sequences annotated as hypothetical proteins
-remove_hypotheticals: False
-
-
-# InterProScan summary parquet database
-database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
-raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
-
-# Search Strategy
-
-# Case-insensitive substring search
+parse_ips: false
+remove_hypotheticals: false
+database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
+raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
 search_string: SepF
-
-# Regex search pattern (set to null if unused)
-rstring: null
-
-
-###########################################################
-# Manual annotation mode
-###########################################################
-
-# Extract IDs from manual annotations
-from_manual: False
+rstring:
+from_manual: false
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
-manual_annotation_filter: ['SepF']
-
-###########################################################
-# HMMsearch mode
-###########################################################
-
-# Extract IDs from HMM search
+manual_annotation_filter:
+- SepF
 hmmsearch: false
-
-from_fasta_csv: True
-INPUT_CSV: /home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF_meta.rev.csv
-INPUT_FASTA: /home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF.unr.fasta
-INPUT_DOMAINS: /home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF_itol_domains
-LOCUS_TAG: "seq_id"
-
-
-
-RUN_SSN: True
-copy_to_windows: True
-windows_path: /mnt/e/ssn_outputs
-###########################################################
-# Biological Target
-###########################################################
-
-
-
-
-# Target protein or family name
+from_fasta_csv: true
+INPUT_CSV: "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF_meta.rev.csv"
+INPUT_FASTA: "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF.unr.fasta"
+INPUT_DOMAINS: "/home/anirudh/asgard_pipeline/database/protein_sets/SepF/SepF_2/extraction_exploration/SepF_itol_domains"
+LOCUS_TAG: seq_id
+RUN_SSN: true
+copy_to_windows: true
+windows_path: "/mnt/e/ssn_outputs"
 protein_name: SepF
-
-
-###########################################################
-# Input Files
-###########################################################
-
-# genome_file
-genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
-
-# Master protein annotation table
-protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
-
-# FASTA file containing all protein sequences
-fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
-
-
-
-
-###########################################################
-# Plotting
-###########################################################
-
-# violin plot
+genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
+protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
 PLOT_Y_COLUMN: protein_length
 ymin: 0
 ymax: 1000
-
-
 PLOT_FILTER_COLUMN: Manual_annotation
-
-PLOT_FILTER_VALS:
-  - SepF
-
+PLOT_FILTER_VALS: &1
+- SepF
 PLOT_DUAL_PROTEINS:
-  - SepF
-
-PLOT_TAXON_LEVELS:
-  - phylum
-  - class
-  - order
-
-
-# presence matrix bubble plot
-
-PLOT_PROTEINS_PRESENCE:
-  - SepF
-
-
-
-
-###########################################################
-# Phylogeny Settings
-###########################################################
-
-# Threads used during phylogeny construction
+- SepF
+PLOT_TAXON_LEVELS: &2
+- phylum
+- class
+- order
+PLOT_PROTEINS_PRESENCE: &3
+- SepF
 phylogeny_threads: 12
-
-# Upload resulting tree to iTOL
-run_itol_upload: True
-
-# iTOL project name
+run_itol_upload: true
 itol_project: Asgard
-
-# Default iTOL annotation file
 default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
-
-
-
-
-
-###########################################################
-# Notes
-###########################################################
-
-# Exactly one of search_string or rstring must be set
-# If both are set or both are null, parse_ips.py will exit
+run:
+  id: SepF_FFC3
+  base_dir: "/home/anirudh/asgard_pipeline"
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  cores: 24
+  reason: Cluster SepFs from retrieved and Asgard
+inputs:
+  database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
+  raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
+  genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
+  protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+  fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+modes:
+  parse_ips:
+    enabled: false
+  hmmsearch:
+    enabled: false
+  from_manual:
+    enabled: false
+  from_fasta_csv:
+    enabled: true
+  search:
+    search_string: SepF
+    rstring:
+plot:
+  y_column: protein_length
+  filter_column: Manual_annotation
+  filter_values: *1
+  taxon_levels: *2
+  proteins_presence: *3
+  ymin: 0
+  ymax: 1000
+phylogeny:
+  threads: 12
+  run_itol_upload: true
+  itol_project: Asgard
