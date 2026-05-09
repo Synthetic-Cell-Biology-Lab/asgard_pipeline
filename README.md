@@ -171,6 +171,16 @@ This ensures controlled biological validation.
 
 ---
 
+
+## 🗺 Snakemake Workspace Roadmap
+
+A full architecture and phased implementation plan for the FastAPI + React workspace system is now documented in:
+
+- `docs/snakemake_workspace_architecture.md`
+
+This roadmap defines the development order, API evolution, preview strategy, run model, and long-term product framing for evolving ASGARD into a computational biology workspace.
+
+---
 ## 📈 Future Extensions
 
 Planned expansions may include:
