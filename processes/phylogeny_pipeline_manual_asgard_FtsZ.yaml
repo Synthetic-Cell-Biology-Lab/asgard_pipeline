@@ -1,17 +1,16 @@
----
 pipeline: phylogeny_pipeline
-run_id: ftsz_fin_v4
-base_dir: "/home/anirudh/asgard_pipeline"
-env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
-log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+run_id: ftsz_fin_v6
+base_dir: /home/anirudh/asgard_pipeline
+env_dir: /home/anirudh/asgard_pipeline/bin/envs
+log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
 reason: Finalize FtsZ tree
 cores: 24
 parse_ips: false
 remove_hypotheticals: false
-database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
-raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
+database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
 search_string: ftsz
-rstring:
+rstring: null
 from_manual: true
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
@@ -25,14 +24,14 @@ manual_annotation_filter:
 hmmsearch: false
 RUN_SSN: true
 protein_name: ftsz
-genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
-protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
-fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
+protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
+fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
 PLOT_Y_COLUMN: protein_length
 ymin: 0
 ymax: 1000
 PLOT_FILTER_COLUMN: Manual_annotation
-PLOT_FILTER_VALS: &1
+PLOT_FILTER_VALS:
 - FtsZ1
 - FtsZ2
 - CetZ
@@ -42,11 +41,11 @@ PLOT_FILTER_VALS: &1
 PLOT_DUAL_PROTEINS:
 - FtsZ1
 - FtsZ2
-PLOT_TAXON_LEVELS: &2
+PLOT_TAXON_LEVELS:
 - phylum
 - class
 - order
-PLOT_PROTEINS_PRESENCE: &3
+PLOT_PROTEINS_PRESENCE:
 - FtsZ1
 - FtsZ2
 - Tubulin
@@ -56,20 +55,20 @@ PLOT_PROTEINS_PRESENCE: &3
 phylogeny_threads: 12
 run_itol_upload: true
 itol_project: Asgard
-default_annotation: "/home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt"
+default_annotation: /home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt
 run:
   id: ftsz_fin_v4
-  base_dir: "/home/anirudh/asgard_pipeline"
-  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
-  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  base_dir: /home/anirudh/asgard_pipeline
+  env_dir: /home/anirudh/asgard_pipeline/bin/envs
+  log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
   cores: 24
   reason: Finalize FtsZ tree
 inputs:
-  database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
-  raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
-  genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
-  protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
-  fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+  database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+  raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
+  genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
+  protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
+  fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
 modes:
   parse_ips:
     enabled: false
@@ -79,13 +78,28 @@ modes:
     enabled: true
   search:
     search_string: ftsz
-    rstring:
+    rstring: null
 plot:
   y_column: protein_length
   filter_column: Manual_annotation
-  filter_values: *1
-  taxon_levels: *2
-  proteins_presence: *3
+  filter_values:
+  - FtsZ1
+  - FtsZ2
+  - CetZ
+  - CetZ2
+  - Tubulin
+  - SepF
+  taxon_levels:
+  - phylum
+  - class
+  - order
+  proteins_presence:
+  - FtsZ1
+  - FtsZ2
+  - Tubulin
+  - CetZ
+  - CetZ2
+  - SepF
   ymin: 0
   ymax: 1000
 phylogeny:

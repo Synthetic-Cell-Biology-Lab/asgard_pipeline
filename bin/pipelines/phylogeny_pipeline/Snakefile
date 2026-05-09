@@ -115,7 +115,9 @@ FINAL_TARGETS = [
     f"{RESULT_DIR}/phylogeny_pipeline.log",
     f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
     expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else [],
-    f"{SSN_DIR}/{PROTEIN}.clusters.csv"
+    f"{SSN_DIR}/{PROTEIN}.clusters.csv",
+    f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
+    f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
 ]
 
 # optional iTOL upload
@@ -208,6 +210,32 @@ rule protein_copy_heatmap_unreviewed:
         """
 
 
+rule protein_coencoding_heatmap_unreviewed:
+    input:
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+
+    output:
+        abso  = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
+        cond = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
+
+    params:
+        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"]),
+        group_col = config.get("PLOT_TAXON_LEVEL", "class")
+
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+
+    shell:
+        """
+        Rscript {CURRENT_DIR}/bin/units/coencoding_heatmap.r \
+        {input.csv} \
+        genome_file \
+        Manual_annotation \
+        {output.abso} \
+        {output.cond} \
+        --proteins {params.proteins:q} \
+        --group_col {params.group_col}
+        """
 
 rule plot_taxa:
     input:

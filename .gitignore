@@ -1,5 +1,37 @@
+# ── Generated databases / outputs ───────────────────────
+
 database/
+
+# ── Snakemake internals ─────────────────────────────────
+
 .snakemake/
-.vscode/
+
+# ── Environment files ───────────────────────────────────
+
 .env
-logs/pipeline_logs
+
+# ── Logs ────────────────────────────────────────────────
+
+logs/
+*.log
+
+# ── Python cache ────────────────────────────────────────
+
+__pycache__/
+*.pyc
+
+# ── Frontend ────────────────────────────────────────────
+
+bin/frontend/node_modules/
+bin/frontend/dist/
+bin/frontend/.vite/
+
+# ── IDE ─────────────────────────────────────────────────
+
+.vscode/
+.idea/
+
+# ── OS junk ─────────────────────────────────────────────
+
+.DS_Store
+Thumbs.db

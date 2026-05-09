@@ -1,0 +1,595 @@
+/* App.css — SnakeLauncher */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --purple: #7F77DD;
+  --purple-dark: #534AB7;
+  --purple-bg: #EEEDFE;
+
+  --green: #1D9E75;
+  --green-dark: #0F6E56;
+
+  --amber: #EF9F27;
+  --red: #E24B4A;
+
+  --log-bg: #151523;
+  --log-stdout: #a9f5d8;
+  --log-stderr: #FAC775;
+  --log-error: #f09595;
+  --log-info: #9b9bc0;
+  --log-exit-ok: #5DCAA5;
+}
+
+body {
+  font-family: 'Syne', system-ui, sans-serif;
+  background: #f5f4f0;
+  color: #1a1a2e;
+  min-height: 100vh;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  body {
+    background: #0f0f1a;
+    color: #e8e8f0;
+  }
+
+  .card {
+    background: #1a1a2e;
+    border-color: #2e2e4a;
+  }
+
+  .config-item {
+    background: #111120;
+  }
+
+  .config-item.selected {
+    background: #1e1c38;
+    border-color: var(--purple);
+  }
+
+  .param-input,
+  .new-name-input {
+    background: #111120;
+    color: #e8e8f0;
+    border-color: #2e2e4a;
+  }
+
+  .icon-btn:hover {
+    background: #2a2a3c;
+  }
+
+  .config-dir {
+    background: #141422;
+  }
+}
+
+/* ── App Layout ───────────────────────────────────────── */
+
+.sk-app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+/* ── Header ───────────────────────────────────────────── */
+
+.sk-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 2.5rem;
+}
+
+.header-snake {
+  font-size: 36px;
+}
+
+.header-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.header-sub {
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+/* ── Helpers ──────────────────────────────────────────── */
+
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.dim {
+  color: #888;
+}
+
+/* ── Card ─────────────────────────────────────────────── */
+
+.card {
+  background: #fff;
+  border: 0.5px solid #ddd;
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Card Header ──────────────────────────────────────── */
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1.1rem;
+}
+
+.step-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #888;
+}
+
+/* ── Step Badge ───────────────────────────────────────── */
+
+.step-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+
+  background: #ddd;
+  color: #888;
+
+  font-size: 12px;
+  font-weight: 700;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.step-badge.active {
+  background: var(--purple);
+  color: #fff;
+}
+
+.step-badge.done {
+  background: var(--green);
+  color: #fff;
+}
+
+/* ── Config Directory ─────────────────────────────────── */
+
+.config-dir {
+  font-size: 11px;
+  margin-bottom: 0.75rem;
+  padding: 6px 10px;
+  background: #f5f4f0;
+  border-radius: 6px;
+}
+
+/* ── Config List ──────────────────────────────────────── */
+
+.config-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  max-height: 500px;
+  overflow-y: auto;
+
+  padding-right: 4px;
+}
+
+/* ── Scrollbar ────────────────────────────────────────── */
+
+.config-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.config-list::-webkit-scrollbar-thumb {
+  background: #999;
+  border-radius: 10px;
+}
+
+.config-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Config Item ──────────────────────────────────────── */
+
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 14px;
+
+  border-radius: 10px;
+  border: 0.5px solid #e0e0e0;
+
+  background: #fafaf8;
+
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+
+  font-family: inherit;
+
+  position: relative;
+
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.1s;
+}
+
+.config-item:hover {
+  border-color: var(--purple);
+  transform: translateY(-1px);
+}
+
+.config-item.selected {
+  border-color: var(--purple);
+  background: var(--purple-bg);
+}
+
+/* ── Config Icon ──────────────────────────────────────── */
+
+.config-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+/* ── Config Info ──────────────────────────────────────── */
+
+.config-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  flex: 1;
+  min-width: 0;
+}
+
+.config-name {
+  font-size: 13px;
+  font-weight: 600;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-meta {
+  font-size: 11px;
+}
+
+/* ── Selected Dot ─────────────────────────────────────── */
+
+.selected-dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+  background: var(--purple);
+
+  flex-shrink: 0;
+}
+
+/* ── Icon Button ──────────────────────────────────────── */
+
+.icon-btn {
+  margin-left: auto;
+
+  background: none;
+  border: none;
+
+  cursor: pointer;
+
+  font-size: 16px;
+  color: #888;
+
+  padding: 4px 8px;
+  border-radius: 6px;
+
+  transition: background 0.15s;
+}
+
+.icon-btn:hover {
+  background: #eee;
+}
+
+/* ── Param Editor ─────────────────────────────────────── */
+
+.param-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.param-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.param-key {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--purple-dark);
+}
+
+/* ── Inputs ───────────────────────────────────────────── */
+
+.param-input,
+.new-name-input {
+  font-size: 12px;
+
+  padding: 7px 10px;
+
+  border-radius: 8px;
+  border: 0.5px solid #ddd;
+
+  background: #fafaf8;
+  color: inherit;
+
+  transition: border-color 0.15s;
+}
+
+.param-input:focus,
+.new-name-input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+/* ── Dirty Badge ──────────────────────────────────────── */
+
+.dirty-badge {
+  font-size: 10px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  padding: 2px 8px;
+
+  border-radius: 6px;
+
+  background: #FAEEDA;
+  color: #854F0B;
+
+  margin-left: 4px;
+}
+
+/* ── Save Row ─────────────────────────────────────────── */
+
+.save-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  margin-top: 1rem;
+
+  flex-wrap: wrap;
+}
+
+.new-name-input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.save-msg {
+  font-size: 12px;
+  margin-top: 8px;
+  color: var(--green-dark);
+}
+
+.loading-params {
+  padding: 0.5rem 1.25rem;
+  font-size: 13px;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+
+.btn {
+  padding: 8px 18px;
+
+  border-radius: 8px;
+  border: 0.5px solid #ccc;
+
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  background: transparent;
+  color: inherit;
+
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: #f0f0ee;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--purple);
+  color: #fff;
+  border-color: var(--purple);
+}
+
+.btn.primary:hover {
+  background: var(--purple-dark);
+}
+
+/* ── Run Button ───────────────────────────────────────── */
+
+.run-btn {
+  font-size: 14px;
+
+  padding: 10px 28px;
+
+  border-radius: 10px;
+  border: none;
+
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+
+  cursor: pointer;
+
+  background: var(--green);
+  color: #fff;
+
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+.run-btn:hover:not(:disabled) {
+  background: var(--green-dark);
+  transform: translateY(-1px);
+}
+
+.run-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.run-btn.running {
+  background: #888;
+}
+
+/* ── Run Row ──────────────────────────────────────────── */
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  margin-bottom: 1rem;
+
+  flex-wrap: wrap;
+}
+
+.run-config {
+  font-size: 12px;
+}
+
+.run-config strong {
+  color: var(--purple-dark);
+}
+
+/* ── Logs ─────────────────────────────────────────────── */
+
+.log-panel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+
+  background: var(--log-bg);
+  color: var(--log-stdout);
+
+  padding: 1rem;
+
+  border-radius: 10px;
+
+  height: 320px;
+  overflow-y: auto;
+
+  line-height: 1.8;
+
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-line.stdout {
+  color: var(--log-stdout);
+}
+
+.log-line.stderr {
+  color: var(--log-stderr);
+}
+
+.log-line.error {
+  color: var(--log-error);
+}
+
+.log-line.info {
+  color: var(--log-info);
+}
+
+.log-line.exit {
+  color: var(--log-exit-ok);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* ── Blink Cursor ─────────────────────────────────────── */
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+.blink {
+  animation: blink 1s infinite;
+}
+
+/* ── Responsive ───────────────────────────────────────── */
+
+@media (max-width: 768px) {
+
+  .param-row {
+    grid-template-columns: 1fr;
+  }
+
+  .run-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .run-btn {
+    width: 100%;
+  }
+
+  .save-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

@@ -1,0 +1,10 @@
+#setup
+mamba create -n snakeui python=3.11 -y
+mamba activate snakeui
+pip install fastapi uvicorn websockets pydantic
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+nvm install --lts
+nvm use --lts
+
+npm install express cors js-yaml
