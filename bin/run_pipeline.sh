@@ -4,6 +4,9 @@ set -euo pipefail
 
 CONFIG_FILE=${1:-}
 
+source .env
+
+
 if [ -z "$CONFIG_FILE" ]; then
   echo "Usage: ./run_pipeline.sh <config.yaml>"
   exit 1

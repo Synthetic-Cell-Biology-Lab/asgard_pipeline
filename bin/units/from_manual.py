@@ -39,6 +39,12 @@ if annotation_filter == "None":
 protein_df = pd.read_csv(protein_file)
 genome_df = pd.read_csv(genome_file)
 
+str_cols = protein_df.select_dtypes(include="object").columns
+protein_df[str_cols] = protein_df[str_cols].apply(lambda col: col.str.strip())
+
+str_cols2 = genome_df.select_dtypes(include="object").columns
+genome_df[str_cols2] = genome_df[str_cols2].apply(lambda col: col.str.strip())
+
 print(f"[DEBUG] Protein table loaded: {protein_df.shape[0]} rows", file=sys.stderr)
 print(f"[DEBUG] Genome table loaded: {genome_df.shape[0]} rows", file=sys.stderr)
 

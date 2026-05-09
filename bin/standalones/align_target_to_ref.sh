@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-TARGET_DIR="/home/anirudh/asgard_pipeline/database/structures/comparisons/Target"
-REF_DIR="/home/anirudh/asgard_pipeline/database/structures/comparisons/Reference"
-OUT_DIR="/home/anirudh/asgard_pipeline/database/structures/comparisons/Output"
+TARGET_DIR="/home/anirudh/asgard_pipeline/database/structures/SepF/comparison/Target"
+REF_DIR="/home/anirudh/asgard_pipeline/database/structures/SepF/comparison/Reference"
+OUT_DIR="/home/anirudh/asgard_pipeline/database/structures/SepF/comparison/Output"
 
 mkdir -p "$OUT_DIR"
 

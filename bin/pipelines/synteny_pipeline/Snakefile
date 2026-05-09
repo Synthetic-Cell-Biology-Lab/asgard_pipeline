@@ -100,7 +100,10 @@ FINAL_TARGETS = [
     f"{RESULT_DIR}/synteny_pipeline.log",
     f"{SYNTENY_DIR}/{RUN_ID}.synteny.html",
     f"{SYNTENY_DIR}/{RUN_ID}.top_genomes_per_class.csv",
-    f"{SYNTENY_DIR}/{RUN_ID}.top_quality_genomes_per_class.csv"
+    f"{SYNTENY_DIR}/{RUN_ID}.top_quality_genomes_per_class.csv",
+    f"{SYNTENY_DIR}/clustered_csv/combined.cluster_summary.csv",
+    f"{SYNTENY_DIR}/classified_csv/combined.synteny_classified.csv",
+    f"{SYNTENY_DIR}/{RUN_ID}.recolored.synteny.html"
     
 ]
 
@@ -110,7 +113,6 @@ FINAL_TARGETS.extend(
     protein = config['gene_neighborhood_protein_sets'],
     taxa_level = config['taxa_levels'])
 )
-
 
 
 rule all:
@@ -221,20 +223,182 @@ rule annotate_domains:
         """
 
 
+rule quantify_neighborhood_synteny:
+    input:
+        csv = f"{SYNTENY_DIR}/{RUN_ID}.synteny.csv",
+        parquet = config["interproscan_full"]
+    output:
+        protein_csv = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.synteny_neighborhood.csv"
+    params:
+        window = config.get("nucleotide_window", 5000),
+        protein_column = config.get("protein_column", "Manual_annotation"),
+        gbk_path =    f"{SYNTENY_DIR}/gbkfiles/",
+        subset =  ",".join(config["synteny_plot_genomes"])
+    conda:
+        f"{config['env_dir']}/duckdb_handler.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/get_protein_neighborhoods.py \
+                --filtered_proteins {input.csv} \
+                --protein_col {params.protein_column} \
+                --ips {input.parquet} \
+                --protein {wildcards.protein} \
+                --window {params.window} \
+                --gbk_path {params.gbk_path} \
+                --out {output.protein_csv} \
+                --subset_gbk {params.subset}
+        """
+
+rule collate_neighborhoods:
+    input:
+        expand(f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.synteny_neighborhood.csv",
+        protein = config['gene_neighborhood_protein_sets'])
+
+    output:
+        f"{SYNTENY_DIR}/neighborhood_csv/combined.synteny_neighborhood.csv"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    run:
+        import pandas as pd
+
+        dfs = []
+
+        for f in input:
+            df = pd.read_csv(f)
+            dfs.append(df)
+
+        combined = pd.concat(dfs, ignore_index=True)
+
+        combined = combined.drop_duplicates(
+            subset=["neighbor_locus"]
+        )
+
+        combined.to_csv(output[0], index=False)
+
+rule cluster_neighborhood_synteny:
+    input:
+        f"{SYNTENY_DIR}/neighborhood_csv/combined.synteny_neighborhood.csv"
+
+    output:
+        f"{SYNTENY_DIR}/clustered_csv/combined.synteny_clustered.csv"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+        
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/cluster_neighborhood.py \
+            --input {input} \
+            --column IPS_acc \
+            --output {output}
+        """
+
+
+
+
+
+rule to_cluster:
+    input:
+        f"{SYNTENY_DIR}/clustered_csv/combined.synteny_clustered.csv"
+
+    output:
+        f"{SYNTENY_DIR}/clustered_csv/combined.cluster_summary.csv"
+
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/build_cluster_df.py \
+            --input {input} \
+            --output {output}
+        """
+
+
+rule classify_functional_bins:
+    input:
+        f"{SYNTENY_DIR}/clustered_csv/combined.synteny_clustered.csv"
+
+    output:
+        classified  = f"{SYNTENY_DIR}/classified_csv/combined.synteny_classified.csv",
+
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/ontology_classifier.py \
+            --input {input} \
+            --column IPS_desc \
+            --classified_output {output.classified}\
+
+        """
+
+
+rule color_map_gen:
+    input:
+        classified = f"{SYNTENY_DIR}/classified_csv/combined.synteny_classified.csv",
+        synteny = f"{SYNTENY_DIR}/{RUN_ID}.synteny.csv"
+
+    output:
+        color_map = f"{SYNTENY_DIR}/clinker/color_map.csv"
+
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/clinker_color_mapper.py \
+            --classified {input.classified} \
+            --synteny {input.synteny} \
+            --output {output.color_map}
+        """
+
+
+
+
 rule synteny_plot:
     input:
-        expand(
+        gbks = expand(
             f"{SYNTENY_DIR}/gbkfiles/{{genome}}.domains.gbk",
             genome=config["synteny_plot_genomes"]
         )
+
     output:
-        html_file = f"{SYNTENY_DIR}/{RUN_ID}.synteny.html"
+        html_file = f"{SYNTENY_DIR}/{RUN_ID}.synteny.html",
+        json = f"{SYNTENY_DIR}/{RUN_ID}.synteny.json"
+
     conda:
         f"{config['env_dir']}/clinker.yaml"
+
     shell:
         """
-        clinker {SYNTENY_DIR}/gbkfiles/*.domains.gbk -p {output.html_file}
+        clinker {input.gbks} \
+            -p {output.html_file} \
+            -s {output.json} \
         """
+
+rule inject_clinker_colors:
+    input:
+        session = f"{SYNTENY_DIR}/{RUN_ID}.synteny.html",
+        color_map = f"{SYNTENY_DIR}/clinker/color_map.csv"
+
+    output:
+        recolored_session = (
+            f"{SYNTENY_DIR}/{RUN_ID}.recolored.synteny.html"
+        )
+
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/recolor_clinker.py \
+            --html {input.session} \
+            --color_map {input.color_map} \
+            --output {output.recolored_session}
+        """
+
 
 
 rule quantify_neighborhood:
@@ -247,7 +411,6 @@ rule quantify_neighborhood:
         window = config.get("nucleotide_window", 5000),
         protein_column = config.get("protein_column", "Manual_annotation"),
         gbk_path = config["gbk_database"],
-        tax_levels = ",".join(config.get("taxa_levels", []))
 
     conda:
         f"{config['env_dir']}/duckdb_handler.yaml"
@@ -260,7 +423,6 @@ rule quantify_neighborhood:
                 --protein {wildcards.protein} \
                 --window {params.window} \
                 --gbk_path {params.gbk_path} \
-                --tax_levels {params.tax_levels} \
                 --out {output.protein_csv}
 
         """
