@@ -1,110 +1,55 @@
 import { useEffect, useState } from 'react'
+import Breadcrumbs from './explorer/Breadcrumbs'
+import FileRow from './explorer/FileRow'
+import PreviewPane from './preview/PreviewPane'
 
-const API_BASE = "http://localhost:8000"
+const API_BASE = 'http://localhost:8000'
 
 export default function FileExplorer() {
-
-  const [currentPath, setCurrentPath] = useState("")
+  const [currentPath, setCurrentPath] = useState('')
+  const [parentPath, setParentPath] = useState(null)
   const [entries, setEntries] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [fileData, setFileData] = useState(null)
 
-  async function loadDirectory(path = "") {
-
-    const res = await fetch(
-      `${API_BASE}/browse?path=${encodeURIComponent(path)}`
-    )
-
+  async function loadDirectory(path = '') {
+    const res = await fetch(`${API_BASE}/browse?path=${encodeURIComponent(path)}`)
     const data = await res.json()
-
     setCurrentPath(data.current_path)
+    setParentPath(data.parent_path)
     setEntries(data.entries)
+    setSelected(null)
+    setFileData(null)
+  }
+
+  async function openEntry(entry) {
+    setSelected(entry.path)
+    if (entry.type === 'directory') {
+      loadDirectory(entry.path)
+      return
+    }
+    const res = await fetch(`${API_BASE}/file?path=${encodeURIComponent(entry.path)}`)
+    setFileData(await res.json())
   }
 
   useEffect(() => {
-    loadDirectory("protein_sets")
+    loadDirectory('database')
   }, [])
 
-  function openEntry(entry) {
-
-    if (entry.type !== "directory") {
-      return
-    }
-
-    const nextPath =
-      currentPath === ""
-        ? entry.name
-        : `${currentPath}/${entry.name}`
-
-    loadDirectory(nextPath)
-  }
-
-  function goUp() {
-
-    if (!currentPath) return
-
-    const split = currentPath.split("/")
-
-    split.pop()
-
-    loadDirectory(split.join("/"))
-  }
-
   return (
-
-    <div className="explorer">
-
-      <div className="explorer-header">
-
-        <button
-          className="nav-btn"
-          onClick={goUp}
-        >
-          ⬅ Up
-        </button>
-
-        <div className="path-display">
-          /{currentPath}
+    <div className="explorer-layout">
+      <div className="explorer">
+        <div className="explorer-header">
+          <button className="nav-btn" onClick={() => parentPath !== null && loadDirectory(parentPath)} disabled={parentPath === null}>⬅ Up</button>
+          <Breadcrumbs currentPath={currentPath} onNavigate={loadDirectory} />
         </div>
-
+        <div className="file-list">
+          {entries.map((entry) => (
+            <FileRow key={entry.path} entry={entry} selected={selected === entry.path} onClick={() => openEntry(entry)} />
+          ))}
+        </div>
       </div>
-
-      <div className="file-list">
-
-        {entries.map(entry => (
-
-          <div
-            key={entry.name}
-            className="file-row"
-            onClick={() => openEntry(entry)}
-          >
-
-            <div className="file-left">
-
-              <span className="file-icon">
-                {entry.type === "directory"
-                  ? "📁"
-                  : "📄"}
-              </span>
-
-              <span className="file-name">
-                {entry.name}
-              </span>
-
-            </div>
-
-            <div className="file-size">
-
-              {entry.size
-                ? `${(entry.size / 1024).toFixed(1)} KB`
-                : ""}
-
-            </div>
-
-          </div>
-
-        ))}
-
-      </div>
-
+      <PreviewPane fileData={fileData} />
     </div>
   )
 }
