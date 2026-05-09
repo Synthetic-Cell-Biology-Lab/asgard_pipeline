@@ -4,7 +4,24 @@ set -euo pipefail
 
 CONFIG_FILE=${1:-}
 
+
+
+
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+
+echo "$SCRIPT_DIR"
+
+
+cd "$BASE_DIR"
+
+
 source .env
+
+
+cd "$BASE_DIR"
 
 
 if [ -z "$CONFIG_FILE" ]; then
