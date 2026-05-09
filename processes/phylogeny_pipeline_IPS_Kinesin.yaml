@@ -1,6 +1,6 @@
 ---
 pipeline: phylogeny_pipeline
-run_id: dynein_3
+run_id: dynein_4
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"

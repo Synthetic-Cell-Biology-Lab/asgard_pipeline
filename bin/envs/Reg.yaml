@@ -19,4 +19,5 @@ dependencies:
   - biopython
   - scikit-learn
   - networkx
+  - colorcet
 prefix: /root/miniconda3/envs/Reg

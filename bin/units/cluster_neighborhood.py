@@ -5,6 +5,8 @@ import pandas as pd
 import networkx as nx
 
 
+
+threshold = 0.4
 ############################################################
 # Cluster based on shared IPS IDs
 ############################################################
@@ -41,7 +43,15 @@ def cluster_ips(ids_series):
             if i >= j:
                 continue
 
-            if dom_i & dom_j:   # share at least one domain
+            intersection = len(dom_i & dom_j)
+            union = len(dom_i | dom_j)
+
+            if union == 0:
+                continue
+
+            jaccard = intersection / union
+
+            if jaccard >= threshold:
                 G.add_edge(i, j)
 
     ########################################################

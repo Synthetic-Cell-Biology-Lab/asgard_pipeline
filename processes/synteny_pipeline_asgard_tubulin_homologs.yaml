@@ -1,6 +1,6 @@
 ---
 pipeline: synteny_pipeline
-run_id: tubulin_homologs_synteny_v17
+run_id: tubulin_homologs_synteny_v25
 protein_name: tubulin
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
