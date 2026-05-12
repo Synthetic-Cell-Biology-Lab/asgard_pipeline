@@ -38,10 +38,10 @@ echo "=============================================="
 
 echo "🧬 Running MAFFT alignment..."
 
-mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
-    > "${PREFIX}.aligned.fasta"
+# mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
+#     > "${PREFIX}.aligned.fasta"
 
-echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
+# echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 
 ############################################
 # 1️⃣ Alignment (FAMSA2)
@@ -82,7 +82,7 @@ iqtree3 \
     -m LG+C40+F+R \
     -bb 1000 -bnni -nstop 200 \
     -alrt 1000 \
-    --runs 5 \
+    --runs 5\
     -redo \
     -pre "${PREFIX}" \
     2>&1 | tee "${PREFIX}.iqtree_console.log"

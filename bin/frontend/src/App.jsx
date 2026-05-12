@@ -1,8 +1,24 @@
-import { useEffect, useMemo, useState } from 'react'
+// App.jsx — Asgard Pipeline
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import FileExplorer from './components/FileExplorer'
+import DagView from './components/DagView'
 import './App.css'
+import logoImg from './assets/logo.png'
 
 const API = 'http://localhost:8000'
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+function timeAgo(ts) {
+  const diff = (Date.now() - ts * 1000) / 1000
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
+function fmt(bytes) {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`
+}
 
 function coerceValue(value, previous) {
   if (typeof previous === 'number') return Number(value)
@@ -10,124 +26,328 @@ function coerceValue(value, previous) {
   return value
 }
 
-function PipelinePanel() {
-  const [configs, setConfigs] = useState([])
-  const [selected, setSelected] = useState('')
-  const [params, setParams] = useState({})
-  const [original, setOriginal] = useState({})
-  const [saveAs, setSaveAs] = useState('')
-  const [runId, setRunId] = useState(null)
-  const [runStatus, setRunStatus] = useState('idle')
-  const [logs, setLogs] = useState([])
-
-  const dirty = useMemo(() => JSON.stringify(params) !== JSON.stringify(original), [params, original])
-
-  async function loadConfigs() {
-    const res = await fetch(`${API}/configs`)
-    const data = await res.json()
-    setConfigs(data.configs || [])
-  }
-
-  async function loadConfig(name) {
-    const res = await fetch(`${API}/configs/${encodeURIComponent(name)}`)
-    const data = await res.json()
-    setSelected(name)
-    setParams(data.parsed || {})
-    setOriginal(data.parsed || {})
-  }
-
-  async function saveConfig() {
-    const filename = (saveAs || selected).trim()
-    if (!filename) return
-    await fetch(`${API}/configs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, params })
-    })
-    setSaveAs('')
-    await loadConfigs()
-    await loadConfig(filename)
-  }
-
-  async function runPipeline() {
-    const res = await fetch(`${API}/runs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config: selected })
-    })
-    const data = await res.json()
-    setRunId(data.id)
-    setRunStatus(data.status)
-    setLogs([])
-
-    const evt = new EventSource(`${API}/runs/${data.id}/stream`)
-    evt.onmessage = (msg) => {
-      const payload = JSON.parse(msg.data)
-      setLogs((prev) => [...prev, payload])
-      if (payload.type === 'exit') {
-        setRunStatus(payload.line)
-        evt.close()
-      }
-    }
-    evt.onerror = () => evt.close()
-  }
-
-  useEffect(() => { loadConfigs() }, [])
-
+// ── StepBadge ─────────────────────────────────────────────────────────────────
+function StepBadge({ n, active, done }) {
   return (
-    <div className="panel-shell">
-      <div className="panel-header">
-        <h2>Pipeline Launcher</h2>
-        <button onClick={loadConfigs}>Refresh</button>
+    <div className={`step-badge ${active ? 'active' : ''} ${done ? 'done' : ''}`}>
+      {done ? '✓' : n}
+    </div>
+  )
+}
+
+// ── ConfigList ────────────────────────────────────────────────────────────────
+function ConfigList({ configs, selected, onSelect, configsDir, onRefresh, loading }) {
+  return (
+    <div className="card">
+      <div className="card-header">
+        <StepBadge n={1} active={!selected} done={!!selected} />
+        <span className="step-label">Choose a config file</span>
+        <button className="icon-btn" onClick={onRefresh} title="Refresh">↺</button>
       </div>
-
-      <div className="field">
-        <label>Config file</label>
-        <select value={selected} onChange={(e) => loadConfig(e.target.value)}>
-          <option value="">Select config…</option>
-          {configs.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-        </select>
-      </div>
-
-      {selected && (
-        <>
-          <div className="params-card">
-            {Object.entries(params).map(([k, v]) => (
-              <div className="param-row" key={k}>
-                <label>{k}</label>
-                <input value={String(v)} onChange={(e) => setParams((prev) => ({ ...prev, [k]: coerceValue(e.target.value, prev[k]) }))} />
-              </div>
-            ))}
-          </div>
-
-          <div className="action-row">
-            <input placeholder="save as (optional)" value={saveAs} onChange={(e) => setSaveAs(e.target.value)} />
-            <button onClick={saveConfig} disabled={!dirty && !saveAs}>Save config</button>
-            <button className="primary" onClick={runPipeline}>Run pipeline</button>
-          </div>
-        </>
+      {configsDir && <div className="config-dir mono dim">📁 {configsDir}</div>}
+      {loading && <p className="dim">Loading…</p>}
+      {!loading && configs.length === 0 && (
+        <p className="dim">No .yaml / .yml files found.</p>
       )}
-
-      <div className="run-meta">Run ID: {runId || '—'} · Status: {runStatus}</div>
-      <div className="log-panel">
-        {logs.map((l, idx) => <div key={idx} className={`log-line ${l.type || ''}`}>{l.line || JSON.stringify(l)}</div>)}
+      <div className="config-list">
+        {configs.map(c => (
+          <button
+            key={c.name}
+            className={`config-item ${selected === c.name ? 'selected' : ''}`}
+            onClick={() => onSelect(c.name)}
+          >
+            <span className="config-icon">⚙</span>
+            <span className="config-info">
+              <span className="mono config-name">{c.name}</span>
+              <span className="config-meta dim">{timeAgo(c.mtime)} · {fmt(c.size)}</span>
+            </span>
+            {selected === c.name && <span className="selected-dot" />}
+          </button>
+        ))}
       </div>
     </div>
   )
 }
 
-function App() {
+// ── ParamEditor ───────────────────────────────────────────────────────────────
+function ParamEditor({ configName, params, onChange, onSaveNew, onReset, isDirty }) {
+  const [saveAs, setSaveAs] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+
+  const handleSave = async () => {
+    const target = saveAs.trim() || configName
+    if (!target.endsWith('.yaml') && !target.endsWith('.yml')) {
+      setSaveMsg('Filename must end in .yaml or .yml')
+      return
+    }
+    setSaving(true)
+    setSaveMsg('')
+    try {
+      await onSaveNew(target, params)
+      setSaveMsg(`✓ Saved as ${target}`)
+      setSaveAs('')
+    } catch (e) {
+      setSaveMsg(`Error: ${e.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <StepBadge n={2} active done={false} />
+        <span className="step-label">Review & edit parameters</span>
+        {isDirty && <span className="dirty-badge">edited</span>}
+      </div>
+      <div className="param-grid">
+        {Object.entries(params).map(([k, v]) => (
+          <div className="param-row" key={k}>
+            <label className="mono param-key" htmlFor={`p-${k}`}>{k}</label>
+            <input
+              id={`p-${k}`}
+              className="mono param-input"
+              value={String(v)}
+              onChange={e => onChange(k, coerceValue(e.target.value, v))}
+            />
+          </div>
+        ))}
+      </div>
+      {isDirty && (
+        <div className="save-row">
+          <input
+            className="mono new-name-input"
+            placeholder={`New name (default: ${configName})`}
+            value={saveAs}
+            onChange={e => setSaveAs(e.target.value)}
+          />
+          <button className="btn primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save as new config'}
+          </button>
+          <button className="btn" onClick={onReset}>Reset</button>
+        </div>
+      )}
+      {saveMsg && <p className="save-msg">{saveMsg}</p>}
+    </div>
+  )
+}
+
+// ── LogViewer ─────────────────────────────────────────────────────────────────
+function LogViewer({ lines, running }) {
+  const bottomRef = useRef(null)
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [lines])
+
+  return (
+    <div className="log-panel" aria-label="Pipeline output" aria-live="polite">
+      {lines.map((l, i) => (
+        <div key={i} className={`log-line ${l.type}`}>{l.text}</div>
+      ))}
+      {running && <div className="log-line info blink">▌</div>}
+      <div ref={bottomRef} />
+    </div>
+  )
+}
+
+// ── PipelinePanel ─────────────────────────────────────────────────────────────
+function PipelinePanel() {
+  const [configs, setConfigs] = useState([])
+  const [configsDir, setConfigsDir] = useState('')
+  const [loadingConfigs, setLoadingConfigs] = useState(false)
+
+  const [selected, setSelected] = useState(null)
+  const [params, setParams] = useState(null)
+  const [original, setOriginal] = useState(null)
+  const [loadingParams, setLoadingParams] = useState(false)
+
+  const [running, setRunning] = useState(false)
+  const [logs, setLogs] = useState([])
+  const [runId, setRunId] = useState(null)
+  const [runStatus, setRunStatus] = useState('idle')
+
+  const isDirty = useMemo(
+    () => params && original && JSON.stringify(params) !== JSON.stringify(original),
+    [params, original]
+  )
+
+  const fetchConfigs = useCallback(async () => {
+    setLoadingConfigs(true)
+    try {
+      const res = await fetch(`${API}/configs`)
+      const data = await res.json()
+      setConfigs(data.configs || [])
+      setConfigsDir(data.dir || '')
+    } catch {
+      setConfigs([])
+    } finally {
+      setLoadingConfigs(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchConfigs() }, [fetchConfigs])
+
+  const handleSelectConfig = async (name) => {
+    setSelected(name)
+    setParams(null)
+    setOriginal(null)
+    setLogs([])
+    setRunStatus('idle')
+    setRunId(null)
+    setLoadingParams(true)
+    try {
+      const res = await fetch(`${API}/configs/${encodeURIComponent(name)}`)
+      const data = await res.json()
+      setParams(data.parsed || {})
+      setOriginal(data.parsed || {})
+    } catch (e) {
+      setParams({ error: e.message })
+    } finally {
+      setLoadingParams(false)
+    }
+  }
+
+  const handleParamChange = (key, value) => setParams(p => ({ ...p, [key]: value }))
+  const handleReset = () => setParams({ ...original })
+
+  const handleSaveNew = async (filename, newParams) => {
+    const res = await fetch(`${API}/configs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, params: newParams }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || err.error || res.statusText)
+    }
+    await fetchConfigs()
+    await handleSelectConfig(filename)
+  }
+
+  const handleRun = async () => {
+    if (!selected || running) return
+    setRunning(true)
+    setLogs([])
+    setRunStatus('running')
+
+    const push = (type, text) => setLogs(l => [...l, { type, text }])
+
+    // Step 1: create the run
+    let runData
+    try {
+      const res = await fetch(`${API}/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: selected }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }))
+        throw new Error(err.detail || JSON.stringify(err))
+      }
+      runData = await res.json()
+    } catch (e) {
+      push('error', `Failed to start run: ${e.message}`)
+      setRunning(false)
+      setRunStatus('error')
+      return
+    }
+
+    setRunId(runData.id)
+
+    // Step 2: stream logs via SSE
+    const es = new EventSource(`${API}/runs/${runData.id}/stream`)
+    es.onmessage = (msg) => {
+      const payload = JSON.parse(msg.data)
+      const text = payload.line ?? payload.data ?? JSON.stringify(payload)
+      const type = payload.type || 'stdout'
+      if (type === 'exit') {
+        push('exit', text)
+        setRunStatus(text)
+        setRunning(false)
+        es.close()
+      } else {
+        String(text).split('\n').filter(Boolean).forEach(t => push(type, t))
+      }
+    }
+    es.onerror = () => {
+      push('error', 'Lost connection to backend.')
+      setRunning(false)
+      setRunStatus('error')
+      es.close()
+    }
+  }
+
+  return (
+    <div className="pipeline-panel">
+      <header className="sk-header">
+        <img src={logoImg} alt="Asgard Pipeline" className="header-logo" />
+        <div>
+          <h1 className="header-title">Asgard Pipeline</h1>
+          <p className="mono header-sub dim">Discover Asgard</p>
+        </div>
+      </header>
+
+      <ConfigList
+        configs={configs}
+        selected={selected}
+        onSelect={handleSelectConfig}
+        configsDir={configsDir}
+        onRefresh={fetchConfigs}
+        loading={loadingConfigs}
+      />
+
+      {loadingParams && <p className="dim loading-params">Loading parameters…</p>}
+
+      {params && selected && (
+        <ParamEditor
+          configName={selected}
+          params={params}
+          onChange={handleParamChange}
+          onSaveNew={handleSaveNew}
+          onReset={handleReset}
+          isDirty={isDirty}
+        />
+      )}
+
+      {params && selected && (
+        <div className="card">
+          <div className="card-header">
+            <StepBadge n={3} active done={false} />
+            <span className="step-label">Run the pipeline</span>
+            {runId && (
+              <span className="mono dim" style={{ marginLeft: 'auto', fontSize: '11px' }}>
+                run #{runId.slice(0, 8)}
+              </span>
+            )}
+          </div>
+          <div className="run-row">
+            <button
+              className={`btn run-btn ${running ? 'running' : ''}`}
+              onClick={handleRun}
+              disabled={running}
+            >
+              {running ? '⏳ Running…' : '▶ Run pipeline'}
+            </button>
+            <span className="mono dim run-config">
+              using <strong>{selected}</strong>
+            </span>
+            {runStatus !== 'idle' && runStatus !== 'running' && (
+              <span className="mono dim" style={{ fontSize: '11px' }}>{runStatus}</span>
+            )}
+          </div>
+          {logs.length > 0 && <LogViewer lines={logs} running={running} />}
+          {(runId || running) && <DagView runId={runId} running={running} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── App root ──────────────────────────────────────────────────────────────────
+export default function App() {
   return (
     <div className="workspace-grid">
       <FileExplorer />
       <PipelinePanel />
     </div>
   )
-import FileExplorer from './components/FileExplorer'
-import './App.css'
-
-function App() {
-  return <FileExplorer />
 }
-
-export default App
