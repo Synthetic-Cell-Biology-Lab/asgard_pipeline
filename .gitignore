@@ -5,6 +5,7 @@ database/
 # ── Snakemake internals ─────────────────────────────────
 
 .snakemake/
+.tmp/
 
 # ── Environment files ───────────────────────────────────
 

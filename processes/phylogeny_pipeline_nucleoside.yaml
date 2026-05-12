@@ -1,0 +1,82 @@
+pipeline: phylogeny_pipeline
+run_id: nucleoside_domain_proteins
+base_dir: /home/anirudh/asgard_pipeline
+env_dir: /home/anirudh/asgard_pipeline/bin/envs
+log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
+reason: To extract proteins containing "nucleoside" in domain name
+cores: 24
+parse_ips: true
+remove_hypotheticals: false
+database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
+search_string: nucleoside
+rstring: null
+from_manual: false
+taxon_level: phylum
+taxon_filter: Asgardarchaeota
+manual_annotation_filter: nucleoside
+hmmsearch: false
+RUN_SSN: true
+SSN_BITSCORES:
+- 50
+- 80
+- 100
+protein_name: nucleoside
+genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
+protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
+fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
+PLOT_Y_COLUMN: protein_length
+ymin: 0
+ymax: 1000
+PLOT_FILTER_COLUMN: Manual_annotation
+PLOT_FILTER_VALS: nucleoside
+PLOT_TAXON_LEVELS:
+- phylum
+- class
+- order
+PLOT_PROTEINS_PRESENCE: nucleoside
+phylogeny_threads: 12
+run_itol_upload: true
+itol_project: Asgard
+copy_to_windows: true
+windows_path: /mnt/e/ssn_outputs
+run:
+  id: nucloside_april_1
+  base_dir: /home/anirudh/asgard_pipeline
+  env_dir: /home/anirudh/asgard_pipeline/bin/envs
+  log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
+  cores: 24
+  reason: Domain analysis of nucloside homologs in asgard
+inputs:
+  database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
+  raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet
+  genome_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv
+  protein_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv
+  fasta_file: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta
+modes:
+  parse_ips:
+    enabled: true
+  hmmsearch:
+    enabled: false
+  from_manual:
+    enabled: false
+  search:
+    search_string: nucloside
+    rstring: null
+plot:
+  y_column: protein_length
+  filter_column: Manual_annotation
+  filter_values:
+  - nucloside
+  taxon_levels:
+  - phylum
+  - class
+  - order
+  proteins_presence:
+  - nucloside
+  ymin: 0
+  ymax: 1000
+phylogeny:
+  threads: 12
+  run_itol_upload: true
+  itol_project: Asgard
