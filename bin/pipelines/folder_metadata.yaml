@@ -30,10 +30,17 @@ subdirectories:
       - folder_metadata.yaml
       - snapshot.py
 
+  extraction_pipeline:
+    purpose: >
+      Snakemake workflow for protein extraction, exploration, SSN, and review-gate outputs
+      that stop at REVIEW_DONE.flag and <protein>.rev.fasta.
+    files:
+      - Snakefile
+
   phylogeny_pipeline:
     purpose: >
-      Snakemake workflow for InterPro-driven protein subset extraction,
-      sequence retrieval, similarity-network exploration, and phylogeny preparation.
+      Continuation-only Snakemake workflow that starts after review_gate and builds final phylogeny
+      from an existing run_id containing REVIEW_DONE.flag and <protein>.rev.fasta.
     files:
       - Snakefile
       - rules/exploration.smk
