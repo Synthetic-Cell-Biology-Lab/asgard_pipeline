@@ -1,0 +1,21 @@
+pipeline: hmmsearch_pipeline
+reason: ""
+cores: 8
+log_dir: logs
+run_id: example_run
+env_dir: bin/envs
+
+project:
+  title: example_project
+output:
+  dir: database/protein_sets/example_hmmsearch
+pfam:
+  hmm_db: /path/to/Pfam-A.hmm
+  names: [ExampleDomain]
+  ids: [PF00000]
+database:
+  fasta: /path/to/database.faa
+  gbff: /path/to/gbff_dir
+params:
+  evalue: 1e-5
+  cpus: 8
