@@ -1,316 +1,49 @@
-########################################
-# Main Snakefile
-########################################
-
 from datetime import datetime
 import os
-import shutil
-import sys
-import glob
-
 
 shell.executable("/bin/bash")
-
-# Expect config from CLI
-
-def _cfg_get(path, default=None):
-    cur = config
-    for key in path:
-        if not isinstance(cur, dict) or key not in cur:
-            return default
-        cur = cur[key]
-    return cur
-
-
-def _cfg_sync(flat_key, nested_path, default=None):
-    nested_val = _cfg_get(nested_path, None)
-    if nested_val is not None and flat_key not in config:
-        config[flat_key] = nested_val
-    elif flat_key in config and nested_val is None:
-        cur = config
-        for key in nested_path[:-1]:
-            cur = cur.setdefault(key, {})
-        cur[nested_path[-1]] = config[flat_key]
-    elif flat_key not in config and nested_val is None and default is not None:
-        config[flat_key] = default
-
-
-_cfg_sync("run_id", ["run", "id"])
-_cfg_sync("base_dir", ["run", "base_dir"])
-_cfg_sync("env_dir", ["run", "env_dir"])
-_cfg_sync("log_dir", ["run", "log_dir"])
-_cfg_sync("pipeline_log", ["run", "pipeline_log"])
-_cfg_sync("cores", ["run", "cores"])
-_cfg_sync("database", ["inputs", "database"])
-_cfg_sync("raw_database", ["inputs", "raw_database"])
-_cfg_sync("genome_file", ["inputs", "genome_file"])
-_cfg_sync("protein_file", ["inputs", "protein_file"])
-_cfg_sync("fasta_file", ["inputs", "fasta_file"])
-_cfg_sync("parse_ips", ["modes", "parse_ips", "enabled"])
-_cfg_sync("hmmsearch", ["modes", "hmmsearch", "enabled"])
-_cfg_sync("from_manual", ["modes", "from_manual", "enabled"])
-_cfg_sync("from_database", ["modes", "from_database", "enabled"])
-_cfg_sync("from_existing_folder", ["modes", "from_existing_folder", "enabled"])
-_cfg_sync("search_string", ["modes", "search", "search_string"])
-_cfg_sync("rstring", ["modes", "search", "rstring"])
-_cfg_sync("phylogeny_threads", ["phylogeny", "threads"])
-_cfg_sync("run_itol_upload", ["phylogeny", "run_itol_upload"])
-_cfg_sync("itol_project", ["phylogeny", "itol_project"])
-_cfg_sync("PLOT_Y_COLUMN", ["plot", "y_column"])
-_cfg_sync("PLOT_FILTER_COLUMN", ["plot", "filter_column"])
-_cfg_sync("PLOT_FILTER_VALS", ["plot", "filter_values"])
-_cfg_sync("PLOT_TAXON_LEVELS", ["plot", "taxon_levels"])
-_cfg_sync("PLOT_PROTEINS_PRESENCE", ["plot", "proteins_presence"])
-_cfg_sync("ymin", ["plot", "ymin"])
-_cfg_sync("ymax", ["plot", "ymax"])
 
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
 PROTEIN = config["protein_name"]
-
-LOG = config['pipeline_log']
-
-TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-RUN_ID = config.get("run_id", TIMESTAMP)
+LOG = config["pipeline_log"]
+RUN_ID = config.get("run_id")
+if not RUN_ID:
+    raise ValueError("run_id is required for phylogeny pipeline continuation.")
 
 BASE_DIR = os.getcwd()
-CURRENT_DIR = config.get('base_dir', workflow.basedir)
 RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
-EXPLORATION_DIR = f"{RESULT_DIR}/extraction_exploration"
 PHYLO_DIR = f"{RESULT_DIR}/final_phylogeny"
-SSN_DIR =  f"{RESULT_DIR}/Sequence_similarity_network"
 LOG_DIR = f"{RESULT_DIR}/Logs"
-BENCHMARK_DIR = f"{RESULT_DIR}/benchmark_dir"
+os.makedirs(PHYLO_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 
-# Create directories
-os.makedirs(RESULT_DIR, exist_ok=True)
-os.makedirs(EXPLORATION_DIR, exist_ok=True)
-os.makedirs(PHYLO_DIR, exist_ok = True)
-os.makedirs(LOG_DIR, exist_ok = True)
-os.makedirs(BENCHMARK_DIR, exist_ok = True)
-
-# Include rule definitions
-
-if config.get("parse_ips", False):
-    include: "rules/parse_ips.smk"
-elif config.get("hmmsearch", False):
-    include: "rules/hmmsearch.smk"
-elif config.get("from_manual", False):
+# Optional helpers: allow curated input creation via existing helper modules
+if config.get("from_manual", False):
     include: "rules/from_manual.smk"
 elif config.get("from_fasta_csv", False):
     include: "rules/from_fasta_and_csv.smk"
-else:
-    print("Must include atleast one mode of id extraction")
-    sys.exit()
-
-include: "rules/exploration.smk"
-include: "rules/ssn_3.smk"
-########################################
-# Final Target
-########################################
-FINAL_TARGETS = [
-    f"{RESULT_DIR}/REVIEW_DONE.flag",
-    f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
-    f"{RESULT_DIR}/phylogeny_pipeline.log",
-    f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
-    expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else [],
-    f"{SSN_DIR}/{PROTEIN}.clusters.csv",
-    f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
-    f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
-]
-
-# optional iTOL upload
-if config.get("run_itol_upload", False):
-    FINAL_TARGETS.append(f"{RESULT_DIR}/{PROTEIN}_main_itol_uploaded.flag")
-
-# add plots
-FINAL_TARGETS.extend(
-    expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg",
-        level=config.get("PLOT_TAXON_LEVELS")
-    )
-)
-
-FINAL_TARGETS.extend(
-    expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg",
-        level=config.get("PLOT_TAXON_LEVELS")
-    )
-)
-
-
-FINAL_TARGETS.extend(
-    expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.svg",
-        level=config.get("PLOT_TAXON_LEVELS")
-    )
-)
-
-
-FINAL_TARGETS.extend(
-    expand(
-        f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
-    )
-)
-
-
-FINAL_TARGETS.extend(
-        [f"{SSN_DIR}/{PROTEIN}.nr.fasta",
-        f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
-        f"{SSN_DIR}/{PROTEIN}.clusters.csv"
-        ]
-    )
 
 rule all:
     input:
-        FINAL_TARGETS
-
-
-rule link_log_file:
-    output:
+        f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
         f"{RESULT_DIR}/phylogeny_pipeline.log"
-    params:
-        logfile = LOG
-    shell:
-        "ln -sf {params.logfile} {output}"
 
-
-
-############################################
-# taxa plotting from unr.csv
-############################################
-
-
-rule protein_copy_heatmap_unreviewed:
-    input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
-
+rule assert_review_inputs:
     output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg"
-
+        touch(f"{RESULT_DIR}/PHYLOGENY_INPUTS_READY.flag")
     params:
-        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
-
-    wildcard_constraints:
-        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
-    
-    conda: 
-        f"{config['env_dir']}/bio-r.yaml"
-
-    shell:
-        """
-        Rscript {CURRENT_DIR}/bin/units/bubble_heat_map_presence_table.r \
-        {input.csv} \
-        {wildcards.level} \
-        genome_file \
-        Manual_annotation \
-        {output} \
-        --proteins {params.proteins:q}
-        """
-
-
-rule protein_coencoding_heatmap_unreviewed:
-    input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
-
-    output:
-        abso  = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
-        cond = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
-
-    params:
-        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"]),
-        group_col = config.get("PLOT_TAXON_LEVEL", "class")
-
-    conda:
-        f"{config['env_dir']}/bio-r.yaml"
-
-    shell:
-        """
-        Rscript {CURRENT_DIR}/bin/units/coencoding_heatmap.r \
-        {input.csv} \
-        genome_file \
-        Manual_annotation \
-        {output.abso} \
-        {output.cond} \
-        --proteins {params.proteins:q} \
-        --group_col {params.group_col}
-        """
-
-rule plot_taxa:
-    input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
-
-    output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg"
-
-    params:
-        y = config.get("PLOT_Y_COLUMN","protein_length"),
-        filter_col = config.get("PLOT_FILTER_COLUMN", "Manual_annotation"),
-        filter_vals = config.get("PLOT_FILTER_VALS", ['FtsZ1','FtsZ2','CetZ','Tubulin']),
-        ymin = config['ymin'],
-        ymax = config['ymax'], 
-        dual_vals = config.get("PLOT_DUAL_PROTEINS", ['FtsZ1','FtsZ2']),
-        dual_arg = lambda wildcards: (
-            "--dual " + " ".join(config.get("PLOT_DUAL_PROTEINS", []))
-            if config.get("PLOT_DUAL_PROTEINS", [])
-            else ""
-        )
-    
-    conda: 
-        f"{config['env_dir']}/bio-r.yaml"
-
-
-    wildcard_constraints:
-        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
-
-    shell:
-        """
-        Rscript {CURRENT_DIR}/bin/units/taxon_violin_plot.r \
-        {input.csv} \
-        {params.y} \
-        {wildcards.level} \
-        {output} \
-        --filter {params.filter_col} {params.filter_vals:q} \
-        --ymin {params.ymin} --ymax {params.ymax} \
-        {params.dual_arg}
-        """
-
-rule protein_copy_heatmap_reviewed:
-    input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
-
-    output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.svg"
-
-    params:
-        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
-
-    wildcard_constraints:
-        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
-    
-    conda: 
-        f"{config['env_dir']}/bio-r.yaml"
-
-    shell:
-        """
-        Rscript {CURRENT_DIR}/bin/units/bubble_heat_map_presence_table.r \
-        {input.csv} \
-        {wildcards.level} \
-        genome_file \
-        Manual_annotation \
-        {output} \
-        --proteins {params.proteins:q}
-        """
-
-
-############################################
-# Final Phylogeny (after manual review)
-############################################
+        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
+        review_flag = f"{RESULT_DIR}/REVIEW_DONE.flag"
+    run:
+        missing = [p for p in [params.rev_fasta, params.review_flag] if not os.path.exists(p)]
+        if missing:
+            raise ValueError("Missing continuation inputs: " + ", ".join(missing))
 
 rule run_phylogeny:
     input:
-        flag = f"{RESULT_DIR}/REVIEW_DONE.flag", 
+        ready = f"{RESULT_DIR}/PHYLOGENY_INPUTS_READY.flag",
         fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta"
     output:
         tree = f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile"
@@ -319,15 +52,6 @@ rule run_phylogeny:
         f"{config['env_dir']}/phylogeny.yaml"
     params:
         prefix = f"{PHYLO_DIR}/{PROTEIN}_phylo"
-    message:
-        """
-        ==========================================
-        🌳 Running Final Phylogeny
-        Input: {input.fasta}
-        Prefix: {params.prefix}
-        Threads: {threads}
-        ==========================================
-        """
     shell:
         """
         bash bin/units/phylogeny_pipeline.sh \
@@ -336,40 +60,10 @@ rule run_phylogeny:
             {threads}
         """
 
-
-rule upload_main_tree_to_itol:
-    input:
-        tree = f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
-        done_annot = f"{PHYLO_DIR}/annotation.done.flag",
-        colorstrip = f"{RESULT_DIR}/extraction_exploration/{PROTEIN}_colorstrip.txt",
-        default = lambda wildcards: config.get("default_annotation", []),
-        annotation_files = lambda wildcards: sorted(
-            glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
-        ),
-        itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
+rule link_log_file:
     output:
-        tree_ids = f"{RESULT_DIR}/{PROTEIN}_main_itol_uploaded.flag"
+        f"{RESULT_DIR}/phylogeny_pipeline.log"
     params:
-        project = config.get("itol_project", "Asgard"),
-        tree_name = f"mafft_{config.get('run_id', 'run')}_{PROTEIN}",
-                all_annots = lambda wildcards, input: (
-            sorted(glob.glob(f"{PHYLO_DIR}/annotation/*.txt"))
-            + ([input.colorstrip])
-            + (input.default if isinstance(input.default, list) else [input.default])
-        ),
-        domain_files = lambda wildcards, input: sorted(
-            glob.glob(f"{input.itol_dir}/*.txt")
-        ),
+        logfile = LOG
     shell:
-        """
-        bash {CURRENT_DIR}/bin/units/itol_upload.sh \
-            {input.tree}            \
-            {params.project}        \
-            {params.tree_name}      \
-            {output.tree_ids}       \
-            {params.all_annots:q}   \
-            {params.domain_files:q}
-        """
-
-
-
+        "ln -sf {params.logfile} {output}"
