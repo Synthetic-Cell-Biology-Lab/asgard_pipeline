@@ -1,0 +1,16 @@
+pipeline: phylogeny_pipeline
+reason: ""
+cores: 8
+log_dir: logs
+run_id: extraction_run_id_to_continue
+protein_name: ExampleProtein
+env_dir: bin/envs
+phylogeny_threads: 8
+
+# Optional helper modes (do not run extraction/ssn)
+from_manual: false
+from_fasta_csv: false
+
+# Continuation inputs must already exist under database/protein_sets/<protein>/<run_id>/
+# - <protein>.rev.fasta
+# - REVIEW_DONE.flag
