@@ -102,7 +102,7 @@ def _parse_dot(dot_str: str) -> dict:
     for m in re.finditer(r'(\d+)\[label\s*=\s*"([^"]+)"', dot_str):
         node_id = m.group(1)
         label = m.group(2).split('\\n')[0].strip()
-        nodes[node_id] = {"id": node_id, "label": label, "status": "pending"}
+        nodes[node_id] = {"id": node_id, "label": label, "rule": label, "status": "pending"}
     for m in re.finditer(r'(\d+)\s*->\s*(\d+)', dot_str):
         edges.append({"source": m.group(1), "target": m.group(2)})
     return {"nodes": list(nodes.values()), "edges": edges}
@@ -111,35 +111,79 @@ def _parse_dot(dot_str: str) -> dict:
 def _annotate_dag(dag: dict, logs: list) -> dict:
     """Colour DAG nodes by status based on log lines."""
     completed, running, failed = set(), set(), set()
+    job_to_rule: Dict[str, str] = {}
 
-    last_rule = None
+    rule_pattern = r'([A-Za-z0-9_.-]+)'
+
     for entry in logs:
-        line = entry.get("line", "")
+        line = (entry.get("line", "") or "").strip()
+        if not line:
+            continue
 
-        m = re.search(r'^rule (\w+):', line)
+        # Rule started: "rule <name>:"
+        m = re.search(rf'^rule {rule_pattern}:', line)
         if m:
-            last_rule = m.group(1)
-            running.add(last_rule)
+            running.add(m.group(1))
 
-        if ('Finished job' in line or ('done' in line and 'steps' in line)) and last_rule:
-            completed.add(last_rule)
-            last_rule = None
+        # Capture job id to rule mapping from execution lines.
+        # Examples:
+        # "jobid: 3"
+        # "rule align_sequences:"
+        m_jobid = re.search(r'jobid:\s*(\d+)', line)
+        if m_jobid:
+            current_jobid = m_jobid.group(1)
+            # if same line contains rule
+            m_rule_inline = re.search(rf'rule {rule_pattern}:', line)
+            if m_rule_inline:
+                rule_name = m_rule_inline.group(1)
+                job_to_rule[current_jobid] = rule_name
+                running.add(rule_name)
 
-        m2 = re.search(r'Error in rule (\w+):', line)
-        if m2:
-            failed.add(m2.group(1))
+        # Failures: "Error in rule <name>:"
+        m_fail = re.search(rf'Error in rule {rule_pattern}:', line)
+        if m_fail:
+            rule_name = m_fail.group(1)
+            failed.add(rule_name)
+            running.discard(rule_name)
 
+        # Completed job: "Finished job 3."
+        m_finished = re.search(r'Finished job\s+(\d+)', line)
+        if m_finished:
+            jobid = m_finished.group(1)
+            rule_name = job_to_rule.get(jobid)
+            if rule_name:
+                completed.add(rule_name)
+                running.discard(rule_name)
+
+        # Pipeline-level completion fallback
+        if "done" in line and "steps" in line:
+            for rule_name in list(running):
+                if rule_name not in failed:
+                    completed.add(rule_name)
+            running.clear()
+
+    debug = {
+        "completed_rules": sorted(completed),
+        "running_rules": sorted(running),
+        "failed_rules": sorted(failed),
+    }
+
+    unmatched = []
     for node in dag["nodes"]:
-        lbl = node["label"]
-        if lbl in failed:
+        rule = node.get("rule", node.get("label", "")).strip()
+        if rule in failed:
             node["status"] = "error"
-        elif lbl in completed:
+        elif rule in completed:
             node["status"] = "done"
-        elif lbl in running:
+        elif rule in running:
             node["status"] = "running"
         else:
             node["status"] = "pending"
+            if rule and rule not in completed and rule not in failed:
+                unmatched.append(rule)
 
+    debug["unmatched_nodes"] = sorted(set(unmatched))
+    dag["debug"] = debug
     return dag
 
 
@@ -443,6 +487,8 @@ def run_dag(run_id: str):
             run.get("logs", [])
         )
 
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "DAG generation timed out")
         return {
             "run_id": run_id,
             "pipeline": pipeline,

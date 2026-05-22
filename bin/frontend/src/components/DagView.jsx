@@ -8,6 +8,7 @@ const STATUS_COLOR = {
   running: '#C8960C',
   done:    '#1D9E75',
   error:   '#E24B4A',
+  unknown: '#8A8AA6',
 }
 
 const STATUS_LABEL = {
@@ -15,6 +16,7 @@ const STATUS_LABEL = {
   running: 'Running',
   done:    'Done',
   error:   'Error',
+  unknown: 'Unknown',
 }
 
 export default function DagView({ runId, running }) {
@@ -162,6 +164,7 @@ export default function DagView({ runId, running }) {
     running: dag.nodes.filter(n => n.status === 'running').length,
     done:    dag.nodes.filter(n => n.status === 'done').length,
     error:   dag.nodes.filter(n => n.status === 'error').length,
+    unknown: dag.nodes.filter(n => !STATUS_COLOR[n.status]).length,
   } : null
 
   return (
@@ -184,6 +187,11 @@ export default function DagView({ runId, running }) {
       </div>
 
       {error && <p className="save-msg err-msg">{error}</p>}
+      {dag?.debug?.unmatched_nodes?.length > 0 && (
+        <p className="save-msg err-msg">
+          Warning: {dag.debug.unmatched_nodes.length} DAG node(s) did not map to run logs.
+        </p>
+      )}
 
       {!dag && !error && (
         <p className="dim" style={{ fontSize: 12, padding: '8px 0' }}>
