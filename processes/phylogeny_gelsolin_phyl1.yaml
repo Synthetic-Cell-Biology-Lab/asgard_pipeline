@@ -1,0 +1,53 @@
+pipeline: phylogeny_pipeline
+protein_name: gelsolin
+exploration_id: gelsolin_run11
+run_id: phyl_run1
+log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
+base_dir: /home/anirudh/asgard_pipeline
+env_dir: /home/anirudh/asgard_pipeline/bin/envs
+itol_project: Asgard
+reason: To perform phylogenetic analysis for gelsolin
+default_annotation: null
+from_manual: false
+from_fasta_csv: false
+alignment:
+  method: famsa
+  famsa:
+    threads: 8
+    extra_args: ''
+  mafft:
+    mode: --linsi
+    threads: 8
+    extra_args: ''
+trimming:
+  method: clipkit
+  trimal:
+    mode: -automated1
+    extra_args: ''
+  bmge:
+    matrix: BLOSUM62
+    gap_rate: 0.5
+    entropy: 0.5
+    extra_args: ''
+  clipkit:
+    mode: smart-gap
+    extra_args: ''
+tree:
+  method: iqtree
+  iqtree:
+    model: MFP
+    seqtype: AA
+    bootstrap: 1000
+    bootstrap_method: -B
+    alrt: 1000
+    outgroup: null
+    seed: 12345
+    ninit: 100
+    ntop: 20
+    nbest: 5
+    nstop: 200
+    niter: null
+    max_iter: 1000
+    epsilon: 0.01
+    threads: 8
+    extra_args: ''

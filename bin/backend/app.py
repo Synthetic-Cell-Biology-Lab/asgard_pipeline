@@ -27,12 +27,16 @@ app.add_middleware(
 # parents[0] = backend/
 # parents[1] = bin/
 # parents[2] = asgard_pipeline/  ← BASE_DIR
-BASE_DIR    = Path(__file__).resolve().parents[2]
-DATABASE_DIR = BASE_DIR / "database"
-RUN_PIPELINE = BASE_DIR / "bin" / "run_pipeline.sh"
+BASE_DIR      = Path(__file__).resolve().parents[2]
+DATABASE_DIR  = BASE_DIR / "database"
+RUN_PIPELINE  = BASE_DIR / "bin" / "run_pipeline.sh"
 DATABASE_DIR.mkdir(parents=True, exist_ok=True)
 
 _state = {"configs_dir": BASE_DIR / "processes"}
+
+# Templates live at asgard_pipeline/templates/configs/
+TEMPLATES_DIR = BASE_DIR / "templates" / "configs"
+TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_configs_dir() -> Path:
     return _state["configs_dir"]
@@ -183,6 +187,17 @@ def _annotate_dag(dag: dict, logs: list) -> dict:
     return dag
 
 
+def _list_yaml_files(directory: Path) -> List[ConfigFileInfo]:
+    """Return all .yaml/.yml files in a directory, sorted newest first."""
+    items = []
+    for file in directory.iterdir():
+        if file.suffix in (".yaml", ".yml"):
+            stat = file.stat()
+            items.append(ConfigFileInfo(name=file.name, size=stat.st_size, mtime=stat.st_mtime))
+    items.sort(key=lambda x: x.mtime, reverse=True)
+    return items
+
+
 # ── Config endpoints ──────────────────────────────────────────────────────────
 
 @app.post("/set-dir")
@@ -195,13 +210,7 @@ def set_dir(req: SetDirRequest):
 @app.get("/configs", response_model=ConfigListResponse)
 def list_configs():
     configs_dir = get_configs_dir()
-    configs = []
-    for file in configs_dir.iterdir():
-        if file.suffix in [".yaml", ".yml"]:
-            stat = file.stat()
-            configs.append(ConfigFileInfo(name=file.name, size=stat.st_size, mtime=stat.st_mtime))
-    configs.sort(key=lambda x: x.mtime, reverse=True)
-    return {"configs": configs, "dir": str(configs_dir)}
+    return {"configs": _list_yaml_files(configs_dir), "dir": str(configs_dir)}
 
 
 @app.get("/configs/{filename}", response_model=ConfigResponse)
@@ -223,6 +232,24 @@ def save_config(req: SaveConfigRequest):
     full_path = get_configs_dir() / safe_name
     full_path.write_text(yaml.dump(req.params, sort_keys=False))
     return {"saved": safe_name}
+
+
+# ── Template endpoints ────────────────────────────────────────────────────────
+
+@app.get("/templates", response_model=ConfigListResponse)
+def list_templates():
+    return {"configs": _list_yaml_files(TEMPLATES_DIR), "dir": str(TEMPLATES_DIR)}
+
+
+@app.get("/templates/{filename}", response_model=ConfigResponse)
+def get_template(filename: str):
+    safe_name = Path(filename).name
+    full_path = TEMPLATES_DIR / safe_name
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
+    raw = full_path.read_text()
+    parsed = yaml.safe_load(raw) or {}
+    return {"name": safe_name, "raw": raw, "parsed": parsed}
 
 
 # ── File browser endpoints ────────────────────────────────────────────────────
@@ -370,28 +397,112 @@ def run_stream(run_id: str, offset: int = 0):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+# ── DAG endpoint ──────────────────────────────────────────────────────────────
+
+def _load_config(config_path: str) -> dict:
+    with open(config_path) as f:
+        return yaml.safe_load(f) or {}
+
+
 @app.get("/runs/{run_id}/dag")
 def run_dag(run_id: str):
     run = RUNS.get(run_id)
+
     if not run:
         raise HTTPException(404, "Run not found")
 
     config_path = run.get("config_path")
+
     if not config_path:
         raise HTTPException(400, "No config path recorded for this run")
 
     try:
-        result = subprocess.run(
-            ["snakemake", "--configfile", config_path, "--dag", "--quiet"],
-            capture_output=True, text=True, timeout=60,
-            cwd=str(BASE_DIR),
-        )
-        if not result.stdout.strip():
-            raise HTTPException(500, f"snakemake --dag produced no output: {result.stderr[:300]}")
+        # ------------------------------------------------------------------
+        # Load config
+        # ------------------------------------------------------------------
 
-        dag = _parse_dot(result.stdout)
-        dag = _annotate_dag(dag, run.get("logs", []))
-        return dag
+        cfg = _load_config(config_path)
+
+        pipeline = cfg.get("pipeline")
+        protein  = cfg.get("protein_name")
+        run_name = cfg.get("run_id")
+
+        if not pipeline:
+            raise HTTPException(400, "Missing 'pipeline' in config")
+
+        if not protein:
+            raise HTTPException(400, "Missing 'protein' in config")
+
+        if not run_name:
+            raise HTTPException(400, "Missing 'run_id' in config")
+
+        # ------------------------------------------------------------------
+        # Resolve DAG path
+        # ------------------------------------------------------------------
+
+        result_dir = Path(
+            cfg.get(
+                "parent_dir",
+                BASE_DIR
+                / "database"
+                / "protein_sets"
+                / protein
+                / run_name
+            )
+        )
+
+        metadata_dir = result_dir / "metadata"
+
+        dag_dot = (
+            metadata_dir
+            / f"{pipeline}_{run_name}_dag.dot"
+        )
+
+        if not dag_dot.exists():
+            raise HTTPException(
+                404,
+                f"DAG file not found: {dag_dot}"
+            )
+
+        # ------------------------------------------------------------------
+        # Load and parse DAG
+        # ------------------------------------------------------------------
+
+        dot_text = dag_dot.read_text()
+
+        if not dot_text.strip():
+            raise HTTPException(
+                500,
+                f"DAG file is empty: {dag_dot}"
+            )
+
+        dag = _parse_dot(dot_text)
+
+        # ------------------------------------------------------------------
+        # Annotate DAG with runtime statuses
+        # ------------------------------------------------------------------
+
+        dag = _annotate_dag(
+            dag,
+            run.get("logs", [])
+        )
 
     except subprocess.TimeoutExpired:
         raise HTTPException(504, "DAG generation timed out")
+        return {
+            "run_id": run_id,
+            "pipeline": pipeline,
+            "protein": protein,
+            "dag_path": str(dag_dot),
+            "nodes": dag["nodes"],
+            "edges": dag["edges"],
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            500,
+            f"Failed to load DAG: {str(e)}"
+        )

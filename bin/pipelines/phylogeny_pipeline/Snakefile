@@ -9,8 +9,8 @@ if not config:
 
 PROTEIN        = config["protein_name"]
 LOG            = config["pipeline_log"]
-RUN_ID         = config.get("run_id")
-EXPLORATION_ID = config.get("exploration_id")
+RUN_ID         = config.get("phyl_id")
+EXPLORATION_ID = config.get("run_id")
 
 if not RUN_ID:
     raise ValueError("run_id is required.")
@@ -101,7 +101,7 @@ rule align:
                 {params.famsa[extra_args]} \
                 {input.fasta} \
                 {output.aln} \
-            > {log} 2>&1
+            2>&1 | tee {log}
 
         elif [ "{params.method}" = "mafft" ]; then
             mafft \
@@ -110,9 +110,10 @@ rule align:
                 {params.mafft[extra_args]} \
                 {input.fasta} \
                 > {output.aln} \
-                2> {log}
+                2> >(tee {log} >&2)
         else
-            echo "Unknown alignment method: {params.method}" && exit 1
+            echo "Unknown alignment method: {params.method}" >&2
+            exit 1
         fi
         """
 
@@ -173,7 +174,7 @@ rule run_phylogeny:
     output:
         tree  = f"{RESULT_DIR}/{PROTEIN}_phylo.treefile"
     threads:
-        config["tree"]["iqtree"].get("threads", 8)
+        config["tree"]["iqtree"].get("threads", 16)
     params:
         prefix   = f"{RESULT_DIR}/{PROTEIN}_phylo",
         p        = config["tree"]["iqtree"],
@@ -194,8 +195,6 @@ rule run_phylogeny:
             -ntop  {params.p[ntop]}     \
             -nbest {params.p[nbest]}    \
             -nstop {params.p[nstop]}    \
-            -maxit {params.p[max_iter]} \
-            -eps   {params.p[epsilon]}  \
             -T     {threads}            \
             {params.optional}           \
             --redo                      \
