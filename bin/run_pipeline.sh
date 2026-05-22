@@ -4,25 +4,22 @@ set -euo pipefail
 
 CONFIG_FILE=${1:-}
 
-
-
-
+# -------------------------------
+# Resolve paths
+# -------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
 
-echo "$SCRIPT_DIR"
-
-
 cd "$BASE_DIR"
-
 
 source .env
 
-
 cd "$BASE_DIR"
 
+# -------------------------------
+# Validate config
+# -------------------------------
 
 if [ -z "$CONFIG_FILE" ]; then
   echo "Usage: ./run_pipeline.sh <config.yaml>"
@@ -30,7 +27,7 @@ if [ -z "$CONFIG_FILE" ]; then
 fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "Config file not found: $CONFIG_FILE"
+  echo "❌ Config file not found: $CONFIG_FILE"
   exit 1
 fi
 
@@ -41,31 +38,52 @@ fi
 read_config_value () {
 python - <<EOF
 import yaml
+
 with open("$CONFIG_FILE") as f:
     cfg = yaml.safe_load(f) or {}
+
 value = cfg.get("$1", "")
+
 if value is None:
     value = ""
+
 print(value)
 EOF
 }
+
+# -------------------------------
+# Read config values
+# -------------------------------
 
 PIPELINE=$(read_config_value pipeline)
 LOG_DIR=$(read_config_value log_dir)
 RUN_REASON=$(read_config_value reason)
 CORES=$(read_config_value cores)
+RUN_ID=$(read_config_value run_id)
+PARENT_DIR=$(read_config_value parent_dir)
+PROTEIN=$(read_config_value protein_name)
+
 WORKING_DIR="$PWD"
 
-
+# -------------------------------
 # Defaults
+# -------------------------------
+
 CORES=${CORES:-1}
 LOG_DIR=${LOG_DIR:-logs}
+
+if [ -z "$RUN_ID" ]; then
+    RUN_ID=$(date +"%Y%m%d_%H%M%S")
+fi
 
 if [ -z "$PIPELINE" ]; then
   echo "❌ 'pipeline' not defined in config."
   exit 1
 fi
 
+# -------------------------------
+# Snakefile path
+# -------------------------------
 
 SNAKEFILE="${WORKING_DIR}/bin/pipelines/${PIPELINE}/Snakefile"
 
@@ -76,19 +94,31 @@ if [ ! -f "$SNAKEFILE" ]; then
 fi
 
 # -------------------------------
-# Create log filename
+# Output structure
 # -------------------------------
 
+RESULT_DIR=${PARENT_DIR:-"$BASE_DIR/database/protein_sets/${PROTEIN}/${RUN_ID}"}
+
+META_DIR="${RESULT_DIR}/metadata"
+
+mkdir -p "$RESULT_DIR"
+mkdir -p "$META_DIR"
 mkdir -p "$LOG_DIR"
 
-RUN_ID=$(read_config_value run_id)
+# -------------------------------
+# Log + DAG paths
+# -------------------------------
 
-# Fallback to timestamp only if run_id not provided
-if [ -z "$RUN_ID" ]; then
-    RUN_ID=$(date +"%Y%m%d_%H%M%S")
-fi
+LOG_FILE="${META_DIR}/${PIPELINE}_${RUN_ID}.log"
 
-LOG_FILE="${LOG_DIR}/${PIPELINE}_${RUN_ID}.log"
+DAG_DOT="${META_DIR}/${PIPELINE}_${RUN_ID}_dag.dot"
+DAG_SVG="${META_DIR}/${PIPELINE}_${RUN_ID}_dag.svg"
+
+# -------------------------------
+# Preserve config
+# -------------------------------
+
+cp "$CONFIG_FILE" "${META_DIR}/config_used.yaml"
 
 # -------------------------------
 # Log header
@@ -101,13 +131,14 @@ echo "Pipeline: $PIPELINE"
 echo "Config: $CONFIG_FILE"
 echo "Start Time: $(date)"
 echo "Cores: $CORES"
+echo "Run ID: $RUN_ID"
+echo "Result Directory: $RESULT_DIR"
 echo "----------------------------------------------"
 echo "Reason:"
 echo "$RUN_REASON"
 echo "=============================================="
 echo ""
 } >> "$LOG_FILE"
-
 
 {
 echo "=============================================="
@@ -120,11 +151,35 @@ echo "=============================================="
 echo ""
 } >> "$LOG_FILE"
 
-# Replace the conda init block with:
+# -------------------------------
+# Conda setup
+# -------------------------------
+
 source /root/miniconda3/etc/profile.d/conda.sh
+
 export CONDA_EXE="/root/miniconda3/bin/conda"
-export PATH="/root/miniconda3/condabin:$PATH"  # condabin not bin!
+export PATH="/root/miniconda3/condabin:$PATH"
+
 conda activate snakemake
+
+# -------------------------------
+# Generate DAG
+# -------------------------------
+
+echo "🧩 Generating DAG..."
+
+snakemake \
+  --snakefile "$SNAKEFILE" \
+  --configfile "$CONFIG_FILE" \
+  --config pipeline_log="$LOG_FILE" \
+  --use-conda \
+  --dag > "$DAG_DOT"
+
+dot -Tsvg "$DAG_DOT" > "$DAG_SVG"
+
+echo "✅ DAG saved to:"
+echo "   DOT: $DAG_DOT"
+echo "   SVG: $DAG_SVG"
 
 # -------------------------------
 # Run Snakemake
@@ -142,7 +197,6 @@ snakemake \
   --verbose \
   2>&1 | tee -a "$LOG_FILE"
 
-
 # -------------------------------
 # Footer
 # -------------------------------
@@ -154,4 +208,7 @@ echo "✅ Finished at $(date)"
 echo "=============================================="
 } | tee -a "$LOG_FILE"
 
-echo "Log saved to: $LOG_FILE"
+echo ""
+echo "📁 Result directory: $RESULT_DIR"
+echo "📝 Log file: $LOG_FILE"
+echo "🧩 DAG SVG: $DAG_SVG"

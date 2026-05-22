@@ -9,8 +9,8 @@ if not config:
 
 PROTEIN        = config["protein_name"]
 LOG            = config["pipeline_log"]
-RUN_ID         = config.get("run_id")
-EXPLORATION_ID = config.get("exploration_id")
+RUN_ID         = config.get("phyl_id")
+EXPLORATION_ID = config.get("run_id")
 
 if not RUN_ID:
     raise ValueError("run_id is required.")
@@ -174,7 +174,7 @@ rule run_phylogeny:
     output:
         tree  = f"{RESULT_DIR}/{PROTEIN}_phylo.treefile"
     threads:
-        config["tree"]["iqtree"].get("threads", 8)
+        config["tree"]["iqtree"].get("threads", 16)
     params:
         prefix   = f"{RESULT_DIR}/{PROTEIN}_phylo",
         p        = config["tree"]["iqtree"],

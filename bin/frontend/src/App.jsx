@@ -40,6 +40,15 @@ function setNestedValue(target, path, nextValue) {
   }
 }
 
+// Convert snake_case / UPPER_CASE key to a readable label
+function toLabel(key) {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/^\w/, c => c.toUpperCase())
+}
+
 // ── StepBadge ─────────────────────────────────────────────────────────────────
 function StepBadge({ n, active, done }) {
   return (
@@ -50,18 +59,23 @@ function StepBadge({ n, active, done }) {
 }
 
 // ── ConfigList ────────────────────────────────────────────────────────────────
-function ConfigList({ configs, selected, onSelect, configsDir, onRefresh, loading }) {
+function ConfigList({ configs, selected, onSelect, configsDir, onRefresh, onBack, loading, isTemplate }) {
   return (
     <div className="card">
       <div className="card-header">
         <StepBadge n={1} active={!selected} done={!!selected} />
-        <span className="step-label">Choose a config file</span>
+        <span className="step-label">
+          {isTemplate ? 'Choose a template' : 'Choose a config file'}
+        </span>
+        <button className="icon-btn" onClick={onBack} title="Back">←</button>
         <button className="icon-btn" onClick={onRefresh} title="Refresh">↺</button>
       </div>
       {configsDir && <div className="config-dir mono dim">📁 {configsDir}</div>}
       {loading && <p className="dim">Loading…</p>}
       {!loading && configs.length === 0 && (
-        <p className="dim">No .yaml / .yml files found.</p>
+        <p className="dim">
+          {isTemplate ? 'No .template.yaml / .template.yml files found.' : 'No .yaml / .yml files found.'}
+        </p>
       )}
       <div className="config-list">
         {configs.map(c => (
@@ -70,7 +84,7 @@ function ConfigList({ configs, selected, onSelect, configsDir, onRefresh, loadin
             className={`config-item ${selected === c.name ? 'selected' : ''}`}
             onClick={() => onSelect(c.name)}
           >
-            <span className="config-icon">⚙</span>
+            <span className="config-icon">{isTemplate ? '📋' : '⚙'}</span>
             <span className="config-info">
               <span className="mono config-name">{c.name}</span>
               <span className="config-meta dim">{timeAgo(c.mtime)} · {fmt(c.size)}</span>
@@ -78,6 +92,124 @@ function ConfigList({ configs, selected, onSelect, configsDir, onRefresh, loadin
             {selected === c.name && <span className="selected-dot" />}
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Questionnaire ─────────────────────────────────────────────────────────────
+function QuestionnaireField({ fieldKey, value, path, onChange }) {
+  const label = toLabel(fieldKey)
+  const inputId = `q-${path.join('-')}`
+
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    return (
+      <div className="param-group">
+        <div className="mono param-group-label">{label}</div>
+        <div className="param-group-body">
+          {Object.entries(value).map(([k, v]) => (
+            <QuestionnaireField
+              key={k}
+              fieldKey={k}
+              value={v}
+              path={[...path, k]}
+              onChange={onChange}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (Array.isArray(value)) {
+    return (
+      <div className="param-row">
+        <label className="mono param-key" htmlFor={inputId}>{label}</label>
+        <input
+          id={inputId}
+          className="mono param-input"
+          value={value.join(', ')}
+          onChange={e =>
+            onChange(path, e.target.value.split(',').map(s => s.trim()).filter(Boolean))
+          }
+        />
+      </div>
+    )
+  }
+
+  if (typeof value === 'boolean') {
+    return (
+      <div className="param-row">
+        <label className="mono param-key" htmlFor={inputId}>{label}</label>
+        <select
+          id={inputId}
+          className="mono param-input"
+          value={String(value)}
+          onChange={e => onChange(path, e.target.value === 'true')}
+        >
+          <option value="false">false</option>
+          <option value="true">true</option>
+        </select>
+      </div>
+    )
+  }
+
+  if (typeof value === 'number') {
+    return (
+      <div className="param-row">
+        <label className="mono param-key" htmlFor={inputId}>{label}</label>
+        <input
+          id={inputId}
+          className="mono param-input"
+          type="number"
+          value={value}
+          onChange={e => onChange(path, Number(e.target.value))}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="param-row">
+      <label className="mono param-key" htmlFor={inputId}>{label}</label>
+      <input
+        id={inputId}
+        className="mono param-input"
+        value={value ?? ''}
+        onChange={e => onChange(path, e.target.value)}
+      />
+    </div>
+  )
+}
+
+function Questionnaire({ params, onSubmit, onBack }) {
+  const [answers, setAnswers] = useState(() => JSON.parse(JSON.stringify(params)))
+
+  const handleChange = (path, value) =>
+    setAnswers(a => setNestedValue(a, path, value))
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <StepBadge n={2} active done={false} />
+        <span className="step-label">Configure your pipeline</span>
+      </div>
+      <div className="param-grid">
+        {Object.entries(answers).map(([k, v]) => (
+          <QuestionnaireField
+            key={k}
+            fieldKey={k}
+            value={v}
+            path={[k]}
+            onChange={handleChange}
+          />
+        ))}
+      </div>
+      <div className="save-row" style={{ marginTop: '1rem' }}>
+        <button className="btn primary" onClick={() => onSubmit(answers)}>
+          Continue to full editor →
+        </button>
+        <button className="btn" onClick={onBack}>Back</button>
       </div>
     </div>
   )
@@ -168,7 +300,7 @@ function ParamEditor({ configName, params, onChange, onSaveNew, onReset, isDirty
   return (
     <div className="card">
       <div className="card-header">
-        <StepBadge n={2} active done={false} />
+        <StepBadge n={3} active done={false} />
         <span className="step-label">Review & edit parameters</span>
         {isDirty && <span className="dirty-badge">edited</span>}
       </div>
@@ -219,6 +351,7 @@ function PipelinePanel() {
   const [loadingConfigs, setLoadingConfigs] = useState(false)
 
   const [selected, setSelected] = useState(null)
+  // modes: null | 'existing' | 'template' | 'questionnaire' | 'template-edit'
   const [mode, setMode] = useState(null)
   const [params, setParams] = useState(null)
   const [original, setOriginal] = useState(null)
@@ -233,11 +366,8 @@ function PipelinePanel() {
     () => params && original && JSON.stringify(params) !== JSON.stringify(original),
     [params, original]
   )
-  const templateCandidates = useMemo(
-    () => configs.filter(c => c.name.endsWith('.template.yaml')).map(c => c.name),
-    [configs]
-  )
 
+  // ── fetch configs (existing flow) ──────────────────────────────────────────
   const fetchConfigs = useCallback(async () => {
     setLoadingConfigs(true)
     try {
@@ -252,10 +382,32 @@ function PipelinePanel() {
     }
   }, [])
 
-  useEffect(() => { fetchConfigs() }, [fetchConfigs])
+  // ── fetch templates (template flow) ────────────────────────────────────────
+  const fetchTemplates = useCallback(async () => {
+    setLoadingConfigs(true)
+    try {
+      const res = await fetch(`${API}/templates`)
+      const data = await res.json()
+      setConfigs(data.configs || [])
+      setConfigsDir(data.dir || '')
+    } catch {
+      setConfigs([])
+    } finally {
+      setLoadingConfigs(false)
+    }
+  }, [])
 
+  // Load the right list whenever mode switches to a picker state
+  useEffect(() => {
+    if (mode === 'existing') fetchConfigs()
+    else if (mode === 'template') fetchTemplates()
+  }, [mode, fetchConfigs, fetchTemplates])
+
+  // ── select a config or template from the list ──────────────────────────────
   const handleSelectConfig = async (name) => {
-    setMode('existing')
+    // Capture mode synchronously — avoids stale-closure bug after awaits
+    const currentMode = mode
+
     setSelected(name)
     setParams(null)
     setOriginal(null)
@@ -263,26 +415,48 @@ function PipelinePanel() {
     setRunStatus('idle')
     setRunId(null)
     setLoadingParams(true)
+
+    // Choose the right endpoint: templates live under /templates/:name,
+    // existing configs under /configs/:name
+    const endpoint =
+      currentMode === 'template'
+        ? `${API}/templates/${encodeURIComponent(name)}`
+        : `${API}/configs/${encodeURIComponent(name)}`
+
     try {
-      const res = await fetch(`${API}/configs/${encodeURIComponent(name)}`)
+      const res = await fetch(endpoint)
       const data = await res.json()
-      setParams(data.parsed || {})
-      setOriginal(data.parsed || {})
+      const parsed = data.parsed || {}
+      setParams(parsed)
+      setOriginal(parsed)
+      // Template → questionnaire step; existing config → straight to editor
+      setMode(currentMode === 'template' ? 'questionnaire' : 'existing')
     } catch (e) {
       setParams({ error: e.message })
+      setMode('existing')
     } finally {
       setLoadingParams(false)
     }
   }
 
-  const handleParamChange = (path, value) => setParams(p => setNestedValue(p, path, value))
-  const handleReset = () => setParams({ ...original })
-
-  const handleStartFromTemplate = async (name) => {
-    const templateConfigName = `${name}.template.yaml`
-    await handleSelectConfig(templateConfigName)
-    setMode('template')
+  const handleBack = () => {
+    setMode(null)
+    setSelected(null)
+    setParams(null)
+    setOriginal(null)
+    setLogs([])
+    setRunId(null)
+    setRunStatus('idle')
+    setRunning(false)
   }
+
+  const handleQuestionnaireSubmit = (answers) => {
+    setParams(answers)
+    setMode('template-edit')
+  }
+
+  const handleParamChange = (path, value) => setParams(p => setNestedValue(p, path, value))
+  const handleReset = () => setParams(JSON.parse(JSON.stringify(original)))
 
   const handleSaveNew = async (filename, newParams) => {
     const res = await fetch(`${API}/configs`, {
@@ -295,7 +469,26 @@ function PipelinePanel() {
       throw new Error(err.detail || err.error || res.statusText)
     }
     await fetchConfigs()
-    await handleSelectConfig(filename)
+    // After saving, switch to existing mode and select the new config
+    setMode('existing')
+    await handleSelectConfigAsExisting(filename)
+  }
+
+  // Separate helper to load a config in existing mode (used after save)
+  const handleSelectConfigAsExisting = async (name) => {
+    setSelected(name)
+    setLoadingParams(true)
+    try {
+      const res = await fetch(`${API}/configs/${encodeURIComponent(name)}`)
+      const data = await res.json()
+      const parsed = data.parsed || {}
+      setParams(parsed)
+      setOriginal(parsed)
+    } catch (e) {
+      setParams({ error: e.message })
+    } finally {
+      setLoadingParams(false)
+    }
   }
 
   const handleRun = async () => {
@@ -306,7 +499,6 @@ function PipelinePanel() {
 
     const push = (type, text) => setLogs(l => [...l, { type, text }])
 
-    // Step 1: create the run
     let runData
     try {
       const res = await fetch(`${API}/runs`, {
@@ -328,7 +520,6 @@ function PipelinePanel() {
 
     setRunId(runData.id)
 
-    // Step 2: stream logs via SSE
     const es = new EventSource(`${API}/runs/${runData.id}/stream`)
     es.onmessage = (msg) => {
       const payload = JSON.parse(msg.data)
@@ -351,7 +542,11 @@ function PipelinePanel() {
     }
   }
 
-  const showConfigPicker = mode === 'existing' || (!!selected && mode === 'template')
+  // ── derived display flags ──────────────────────────────────────────────────
+  const showConfigPicker  = mode === 'existing' || mode === 'template'
+  const showQuestionnaire = mode === 'questionnaire' && !!params
+  const showParamEditor   = !!params && !!selected && (mode === 'existing' || mode === 'template-edit')
+  const showRunPanel      = !!params && !!selected && (mode === 'existing' || mode === 'template-edit')
 
   return (
     <div className="pipeline-panel">
@@ -363,6 +558,7 @@ function PipelinePanel() {
         </div>
       </header>
 
+      {/* Step 1 — choose how to start */}
       {!mode && (
         <div className="card">
           <div className="card-header">
@@ -376,12 +572,11 @@ function PipelinePanel() {
             <button
               className="btn"
               onClick={() => {
-                if (templateCandidates.length > 0) {
-                  handleSelectConfig(templateCandidates[0])
-                  setMode('template')
-                }
+                setSelected(null)
+                setParams(null)
+                setOriginal(null)
+                setMode('template')
               }}
-              disabled={templateCandidates.length === 0}
             >
               Create from template
             </button>
@@ -392,49 +587,39 @@ function PipelinePanel() {
         </div>
       )}
 
+      {/* Step 1 (continued) — pick a config / template from the list */}
       {showConfigPicker && (
         <ConfigList
           configs={configs}
           selected={selected}
           onSelect={handleSelectConfig}
           configsDir={configsDir}
-          onRefresh={fetchConfigs}
+          onRefresh={mode === 'template' ? fetchTemplates : fetchConfigs}
+          onBack={handleBack}
           loading={loadingConfigs}
+          isTemplate={mode === 'template'}
         />
-      )}
-
-      {!mode && (
-        <div className="card">
-          <div className="card-header">
-            <StepBadge n={2} active done={false} />
-            <span className="step-label">Choose how to start</span>
-          </div>
-          <div className="save-row">
-            <button className="btn primary" onClick={() => setMode('existing')}>
-              Use existing config
-            </button>
-            <button
-              className="btn"
-              onClick={() => {
-                if (templateCandidates.length > 0) {
-                  handleSelectConfig(templateCandidates[0])
-                  setMode('template')
-                }
-              }}
-              disabled={templateCandidates.length === 0}
-            >
-              Create from template
-            </button>
-          </div>
-          <p className="dim" style={{ marginTop: '8px', fontSize: '12px' }}>
-            Tip: "Create from template" opens templates/configs/*.template.yaml for editing and saving as a new config.
-          </p>
-        </div>
       )}
 
       {loadingParams && <p className="dim loading-params">Loading parameters…</p>}
 
-      {params && selected && mode && (
+      {/* Step 2 (template flow) — questionnaire generated from template fields */}
+      {showQuestionnaire && (
+        <Questionnaire
+          params={params}
+          onSubmit={handleQuestionnaireSubmit}
+          onBack={() => {
+            // Go back to template picker, keeping the template list loaded
+            setMode('template')
+            setSelected(null)
+            setParams(null)
+            setOriginal(null)
+          }}
+        />
+      )}
+
+      {/* Step 2 (existing) / Step 3 (template) — full param editor */}
+      {showParamEditor && (
         <ParamEditor
           configName={selected}
           params={params}
@@ -445,10 +630,11 @@ function PipelinePanel() {
         />
       )}
 
-      {params && selected && (
+      {/* Final step — run */}
+      {showRunPanel && (
         <div className="card">
           <div className="card-header">
-            <StepBadge n={3} active done={false} />
+            <StepBadge n={mode === 'existing' ? 3 : 4} active done={false} />
             <span className="step-label">Run the pipeline</span>
             {runId && (
               <span className="mono dim" style={{ marginLeft: 'auto', fontSize: '11px' }}>
