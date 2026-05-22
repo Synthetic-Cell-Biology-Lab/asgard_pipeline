@@ -26,6 +26,20 @@ function coerceValue(value, previous) {
   return value
 }
 
+function setNestedValue(target, path, nextValue) {
+  if (path.length === 0) return nextValue
+  const [head, ...rest] = path
+  if (Array.isArray(target)) {
+    const copy = [...target]
+    copy[head] = setNestedValue(copy[head], rest, nextValue)
+    return copy
+  }
+  return {
+    ...(target || {}),
+    [head]: setNestedValue(target?.[head], rest, nextValue),
+  }
+}
+
 // ── StepBadge ─────────────────────────────────────────────────────────────────
 function StepBadge({ n, active, done }) {
   return (
@@ -70,6 +84,63 @@ function ConfigList({ configs, selected, onSelect, configsDir, onRefresh, loadin
 }
 
 // ── ParamEditor ───────────────────────────────────────────────────────────────
+function ParamField({ name, value, path, onChange, depth = 0 }) {
+  const inputId = `p-${path.join('-')}`
+  const keyLabel = depth === 0 ? name : `↳ ${name}`
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return (
+      <div className="param-group">
+        <div className="mono param-group-label">{keyLabel}</div>
+        <div className="param-group-body">
+          {Object.entries(value).map(([k, v]) => (
+            <ParamField
+              key={k}
+              name={k}
+              value={v}
+              path={[...path, k]}
+              onChange={onChange}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (Array.isArray(value)) {
+    return (
+      <div className="param-group">
+        <div className="mono param-group-label">{keyLabel}</div>
+        <div className="param-group-body">
+          {value.map((item, idx) => (
+            <ParamField
+              key={`${name}-${idx}`}
+              name={`[${idx}]`}
+              value={item}
+              path={[...path, idx]}
+              onChange={onChange}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="param-row">
+      <label className="mono param-key" htmlFor={inputId}>{keyLabel}</label>
+      <input
+        id={inputId}
+        className="mono param-input"
+        value={String(value ?? '')}
+        onChange={e => onChange(path, coerceValue(e.target.value, value))}
+      />
+    </div>
+  )
+}
+
 function ParamEditor({ configName, params, onChange, onSaveNew, onReset, isDirty }) {
   const [saveAs, setSaveAs] = useState('')
   const [saving, setSaving] = useState(false)
@@ -103,15 +174,7 @@ function ParamEditor({ configName, params, onChange, onSaveNew, onReset, isDirty
       </div>
       <div className="param-grid">
         {Object.entries(params).map(([k, v]) => (
-          <div className="param-row" key={k}>
-            <label className="mono param-key" htmlFor={`p-${k}`}>{k}</label>
-            <input
-              id={`p-${k}`}
-              className="mono param-input"
-              value={String(v)}
-              onChange={e => onChange(k, coerceValue(e.target.value, v))}
-            />
-          </div>
+          <ParamField key={k} name={k} value={v} path={[k]} onChange={onChange} />
         ))}
       </div>
       {isDirty && (
@@ -156,6 +219,7 @@ function PipelinePanel() {
   const [loadingConfigs, setLoadingConfigs] = useState(false)
 
   const [selected, setSelected] = useState(null)
+  const [mode, setMode] = useState(null)
   const [params, setParams] = useState(null)
   const [original, setOriginal] = useState(null)
   const [loadingParams, setLoadingParams] = useState(false)
@@ -168,6 +232,10 @@ function PipelinePanel() {
   const isDirty = useMemo(
     () => params && original && JSON.stringify(params) !== JSON.stringify(original),
     [params, original]
+  )
+  const templateCandidates = useMemo(
+    () => configs.filter(c => c.name.endsWith('.template.yaml')).map(c => c.name),
+    [configs]
   )
 
   const fetchConfigs = useCallback(async () => {
@@ -187,6 +255,7 @@ function PipelinePanel() {
   useEffect(() => { fetchConfigs() }, [fetchConfigs])
 
   const handleSelectConfig = async (name) => {
+    setMode('existing')
     setSelected(name)
     setParams(null)
     setOriginal(null)
@@ -206,8 +275,14 @@ function PipelinePanel() {
     }
   }
 
-  const handleParamChange = (key, value) => setParams(p => ({ ...p, [key]: value }))
+  const handleParamChange = (path, value) => setParams(p => setNestedValue(p, path, value))
   const handleReset = () => setParams({ ...original })
+
+  const handleStartFromTemplate = async (name) => {
+    const templateConfigName = `${name}.template.yaml`
+    await handleSelectConfig(templateConfigName)
+    setMode('template')
+  }
 
   const handleSaveNew = async (filename, newParams) => {
     const res = await fetch(`${API}/configs`, {
@@ -295,9 +370,38 @@ function PipelinePanel() {
         loading={loadingConfigs}
       />
 
+      {!mode && (
+        <div className="card">
+          <div className="card-header">
+            <StepBadge n={2} active done={false} />
+            <span className="step-label">Choose how to start</span>
+          </div>
+          <div className="save-row">
+            <button className="btn primary" onClick={() => setMode('existing')}>
+              Use existing config
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                if (templateCandidates.length > 0) {
+                  handleSelectConfig(templateCandidates[0])
+                  setMode('template')
+                }
+              }}
+              disabled={templateCandidates.length === 0}
+            >
+              Create from template
+            </button>
+          </div>
+          <p className="dim" style={{ marginTop: '8px', fontSize: '12px' }}>
+            Tip: "Create from template" opens templates/configs/*.template.yaml for editing and saving as a new config.
+          </p>
+        </div>
+      )}
+
       {loadingParams && <p className="dim loading-params">Loading parameters…</p>}
 
-      {params && selected && (
+      {params && selected && mode && (
         <ParamEditor
           configName={selected}
           params={params}
