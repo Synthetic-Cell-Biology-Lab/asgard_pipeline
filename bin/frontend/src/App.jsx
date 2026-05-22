@@ -351,6 +351,8 @@ function PipelinePanel() {
     }
   }
 
+  const showConfigPicker = mode === 'existing' || (!!selected && mode === 'template')
+
   return (
     <div className="pipeline-panel">
       <header className="sk-header">
@@ -361,14 +363,45 @@ function PipelinePanel() {
         </div>
       </header>
 
-      <ConfigList
-        configs={configs}
-        selected={selected}
-        onSelect={handleSelectConfig}
-        configsDir={configsDir}
-        onRefresh={fetchConfigs}
-        loading={loadingConfigs}
-      />
+      {!mode && (
+        <div className="card">
+          <div className="card-header">
+            <StepBadge n={1} active done={false} />
+            <span className="step-label">Choose how to start</span>
+          </div>
+          <div className="save-row">
+            <button className="btn primary" onClick={() => setMode('existing')}>
+              Use existing config
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                if (templateCandidates.length > 0) {
+                  handleSelectConfig(templateCandidates[0])
+                  setMode('template')
+                }
+              }}
+              disabled={templateCandidates.length === 0}
+            >
+              Create from template
+            </button>
+          </div>
+          <p className="dim" style={{ marginTop: '8px', fontSize: '12px' }}>
+            Tip: "Create from template" opens templates/configs/*.template.yaml for editing and saving as a new config.
+          </p>
+        </div>
+      )}
+
+      {showConfigPicker && (
+        <ConfigList
+          configs={configs}
+          selected={selected}
+          onSelect={handleSelectConfig}
+          configsDir={configsDir}
+          onRefresh={fetchConfigs}
+          loading={loadingConfigs}
+        />
+      )}
 
       {!mode && (
         <div className="card">
