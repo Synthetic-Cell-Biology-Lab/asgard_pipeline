@@ -6,6 +6,7 @@ run_id: example_run
 env_dir: bin/envs
 
 output_dir: database/collated/latest_update
+
 organisms:
   - name: "Asgard archaea"
     taxon: 1935183

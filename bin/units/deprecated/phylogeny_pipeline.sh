@@ -38,10 +38,10 @@ echo "=============================================="
 
 echo "🧬 Running MAFFT alignment..."
 
-# mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
-#     > "${PREFIX}.aligned.fasta"
+mafft --localpair --maxiterate 1000 --thread "$THREADS" "$INPUT_FASTA" \
+    > "${PREFIX}.aligned.fasta"
 
-# echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
+echo "✅ Alignment complete → ${PREFIX}.aligned.fasta"
 
 ############################################
 # 1️⃣ Alignment (FAMSA2)
@@ -61,13 +61,13 @@ echo "🧬 Running MAFFT alignment..."
 ############################################
 # Preferred over TrimAl for protein datasets
 
-echo "Running ClipKIT trimming..."
+# echo "Running ClipKIT trimming..."
 
-clipkit "${PREFIX}.aligned.fasta" \
-    -m smart-gap \
-    -o "${PREFIX}.trimmed.fasta"
+# clipkit "${PREFIX}.aligned.fasta" \
+#     -m smart-gap \
+#     -o "${PREFIX}.trimmed.fasta"
 
-echo "Trimming complete → ${PREFIX}.trimmed.fasta"
+# echo "Trimming complete → ${PREFIX}.trimmed.fasta"
 
 ############################################
 # 3️⃣ Model Selection + 4️⃣ ML Tree (IQ-TREE3)
@@ -79,10 +79,9 @@ echo "Running IQ-TREE3 (Model selection + ML tree)..."
 iqtree3 \
     -s "${PREFIX}.trimmed.fasta" \
     -T AUTO \
-    -m LG+C40+F+R \
+    -m LG+G4\
     -bb 1000 -bnni -nstop 200 \
     -alrt 1000 \
-    --runs 5\
     -redo \
     -pre "${PREFIX}" \
     2>&1 | tee "${PREFIX}.iqtree_console.log"

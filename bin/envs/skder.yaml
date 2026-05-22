@@ -1,0 +1,21 @@
+name: skder
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - skder=1.3.4
+  - skani
+  - pyrodigal
+  - cd-hit
+  - biopython
+  - pandas
+  - python-igraph
+  - matplotlib-base
+  - seaborn
+  - tqdm
+  - aiofile
+  - aiohttp
+  - wget
+  - setuptools

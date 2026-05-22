@@ -1,22 +1,22 @@
 ---
-pipeline: phylogeny_pipeline
-run_id: actin_run_ips_2
+pipeline: extraction_pipeline
+run_id: actin_run5
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 reason: To perform phylogenetic analysis for actin
 cores: 24
-parse_ips: true
-remove_hypotheticals: false
 database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
 raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
 search_string: actin
 rstring:
-from_manual: false
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
 manual_annotation_filter:
-- actin
+- Actin
+- Actin_zn
+- MreB_actin
+
 hmmsearch: false
 RUN_SSN: true
 SSN_BITSCORES:
@@ -36,20 +36,24 @@ ymin: 0
 ymax: 1000
 PLOT_FILTER_COLUMN: Manual_annotation
 PLOT_FILTER_VALS: &1
-- actin
+- Actin
+- Actin_zn
+- MreB_actin
 PLOT_TAXON_LEVELS: &2
 - phylum
 - class
 - order
 PLOT_PROTEINS_PRESENCE: &3
-- actin
+- Actin
+- Actin_zn
+- MreB_actin
 phylogeny_threads: 12
 run_itol_upload: true
 itol_project: Asgard
 copy_to_windows: true
 windows_path: "/mnt/e/ssn_outputs"
 run:
-  id: actin_run_ips_2
+  id: actin_presence_matrix
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
@@ -63,11 +67,11 @@ inputs:
   fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
 modes:
   parse_ips:
-    enabled: true
+    enabled: false
   hmmsearch:
     enabled: false
   from_manual:
-    enabled: false
+    enabled: true
   search:
     search_string: actin
     rstring:
@@ -78,7 +82,7 @@ plot:
   taxon_levels: *2
   proteins_presence: *3
   ymin: 0
-  ymax: 1000
+  ymax: 1500
 phylogeny:
   threads: 12
   run_itol_upload: true

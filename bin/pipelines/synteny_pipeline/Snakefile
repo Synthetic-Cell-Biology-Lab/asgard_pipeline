@@ -115,6 +115,12 @@ FINAL_TARGETS.extend(
 )
 
 
+FINAL_TARGETS.extend(
+    expand(f"{SYNTENY_DIR}/pfam_plots/{{protein}}/{{taxa_level}}/done.txt",
+    protein = config['gene_neighborhood_protein_sets'],
+    taxa_level = config['taxa_levels'])
+)
+
 rule all:
     input:
         FINAL_TARGETS
@@ -144,8 +150,8 @@ rule top_genome_by_quality_per_class:
         f"{SYNTENY_DIR}/{RUN_ID}.top_quality_genomes_per_class.csv"
     params:
         taxa_levels = ",".join(config["taxa_levels"]),
-        completeness_col = config.get("completeness_col", "completeness"),
-        contamination_col = config.get("contamination_col", "contamination")
+        completeness_col = config.get("completeness_col", "Completeness"),
+        contamination_col = config.get("contamination_col", "Contamination")
     conda:
         f"{config['env_dir']}/duckdb_handler.yaml"
     shell:
@@ -406,7 +412,8 @@ rule quantify_neighborhood:
         csv = f"{SYNTENY_DIR}/{RUN_ID}.synteny.csv",
         parquet = config["interproscan_full"]
     output:
-        protein_csv = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.neighborhood.csv"
+        protein_csv = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.neighborhood.csv",
+        pfam_out = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.pfam_neigh.tsv"
     params:
         window = config.get("nucleotide_window", 5000),
         protein_column = config.get("protein_column", "Manual_annotation"),
@@ -418,6 +425,7 @@ rule quantify_neighborhood:
         """
         python {CURRENT_DIR}/bin/units/get_protein_neighborhoods.py \
                 --filtered_proteins {input.csv} \
+                --pfam_out {output.pfam_out}\
                 --protein_col {params.protein_column} \
                 --ips {input.parquet} \
                 --protein {wildcards.protein} \
@@ -425,6 +433,35 @@ rule quantify_neighborhood:
                 --gbk_path {params.gbk_path} \
                 --out {output.protein_csv}
 
+
+        """
+
+rule plot_pfam_frequency:
+    input:
+        neighborhood = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.neighborhood.csv",
+        genome_file  = config["genome_file"],
+        pfam_out = f"{SYNTENY_DIR}/neighborhood_csv/{{protein}}.pfam_neigh.tsv"
+    output:
+        outdir = directory(f"{SYNTENY_DIR}/pfam_plots/{{protein}}/{{taxa_level}}/cluster_freq"),
+        done = f"{SYNTENY_DIR}/pfam_plots/{{protein}}/{{taxa_level}}/done.txt",
+    params:
+        top_n       = config.get("top_n",       25),
+        min_genomes = config.get("min_genomes", 1),
+    conda:
+        f"{config['env_dir']}/Reg.yaml" 
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/plot_pfam_frequency.py \
+            --input       {input.neighborhood}         \
+            --pfam_map    {input.pfam_out}             \
+            --outdir      {output.outdir}              \
+            --protein     {wildcards.protein}          \
+            --genome_file {input.genome_file}          \
+            --tax_level   {wildcards.taxa_level}       \
+            --top_n       {params.top_n}               \
+            --min_genomes {params.min_genomes}         
+
+        touch {output.done}
         """
 
 

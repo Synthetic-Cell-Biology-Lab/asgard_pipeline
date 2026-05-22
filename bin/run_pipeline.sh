@@ -135,6 +135,7 @@ snakemake \
   --configfile "$CONFIG_FILE" \
   --config pipeline_log="$LOG_FILE" \
   --use-conda \
+  --rerun-incomplete \
   --cores "$CORES" \
   --printshellcmds \
   --conda-frontend conda \

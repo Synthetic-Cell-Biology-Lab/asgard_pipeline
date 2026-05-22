@@ -1,5 +1,5 @@
 ---
-pipeline: phylogeny_pipeline
+pipeline: extraction_pipeline
 run_id: gelsolin_m2
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"

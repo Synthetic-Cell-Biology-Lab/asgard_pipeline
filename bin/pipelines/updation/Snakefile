@@ -1,5 +1,8 @@
 
 
+wildcard_constraints:
+    org = "[^/]+"
+
 def _cfg_get(path, default=None):
     cur = config
     for key in path:
@@ -55,50 +58,280 @@ import os
 
 configfile: "config.yaml"
 
+
 OUTDIR = config["output_dir"]
 
-
 ORGS = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
+
+
+STAGES = config["pipeline_stages"]
+
+def stage_dir(org, stage):
+    stage_map = {
+        "raw":      f"{OUTDIR}/{org}/genomes",
+        "filtered": f"{OUTDIR}/{org}/filtered",
+        "derep":    f"{OUTDIR}/skder/{org}",
+    }
+    return stage_map[stage]
+
+def prev_stage_dir(org, stage):
+    idx = STAGES.index(stage)
+    if idx == 0:
+        raise ValueError(f"Stage '{stage}' has no previous stage")
+    return stage_dir(org, STAGES[idx - 1])
+
+
+
+def get_org_param(wc, field, default=None):
+    org = next(o for o in config["organisms"]
+               if o["name"].replace(" ", "_").lower() == wc.org)
+    return org.get(field, default)
 
 rule all:
     input:
         expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS),
-        expand(f"{OUTDIR}/combined/all_{{org}}_proteomes.faa", org=ORGS)
-
+        expand(f"{OUTDIR}/skder/{{org}}/dedup_done.flag", org=ORGS),
+        expand(f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag", org=ORGS),
+        expand(f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag", org=ORGS)
 
 rule download_genomes:
     output:
-        flag = f"{OUTDIR}/{{org}}/done.flag"
+        zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
     params:
-        taxon = lambda wc: next(o for o in config["organisms"] if o["name"].replace(" ", "_").lower() == wc.org)["taxon"],
-        level = lambda wc: ",".join(next(o for o in config["organisms"] if o["name"].replace(" ", "_").lower() == wc.org)["assembly_level"]),
-        refseq = lambda wc: "--reference" if next(o for o in config["organisms"] if o["name"].replace(" ", "_").lower() == wc.org)["refseq_only"] else ""
+        name   = lambda wc: get_org_param(wc, "name"),
+        level  = lambda wc: " ".join(
+            f"--assembly-level {l}"
+            for l in (get_org_param(wc, "assembly_level") or [])
+        ),
+        refseq = lambda wc: "--reference" if get_org_param(wc, "refseq_only") else ""
     conda:
-        f"{config.get("env_dir")}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
-        mkdir -p {OUTDIR}/{wildcards.org}
-        
-        datasets download genome taxon "{params.taxon}" \
-            --assembly-level {params.level} \
+        datasets download genome taxon "{params.name}" \
+            {params.level} \
             {params.refseq} \
-            --include genome,protein,gff3 \
-            --filename {OUTDIR}/{wildcards.org}/dataset.zip
+            --include genome \
+            --filename {output.zipfile}
+        """
+
+rule extract_genomes:
+    input:
+        zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
+    output:
+        flag    = f"{OUTDIR}/{{org}}/done.flag",
+        genomes = directory(f"{OUTDIR}/{{org}}/genomes")
+    shell:
+        """
+        mkdir -p {output.genomes}
+
+        unzip -o {input.zipfile} \
+            -d {OUTDIR}/{wildcards.org}/
+
+        find {OUTDIR}/{wildcards.org}/ncbi_dataset/data/ \
+            -name "*.fna" \
+            -exec ln -sf {{}} {output.genomes}/ \;
+
+        touch {output.flag}
+        """
+
+rule checkm2:
+    input:
+        flag        = f"{OUTDIR}/{{org}}/done.flag",
+        genomes_dir = f"{OUTDIR}/{{org}}/genomes"
+    output:
+        outdir         = directory(f"{OUTDIR}/checkm2/{{org}}"),
+        checkm2_flag   = f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag",
+        quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv"
+    threads: 16
+    params:
+        db = config["checkm2"]["db_path"]
+    conda:
+        f"{config.get('env_dir')}/checkm2.yaml"
+    shell:
+        """
+        checkm2 predict \
+            --input {input.genomes_dir} \
+            --output-directory {output.outdir} \
+            --database_path {params.db} \
+            --extension fna \
+            --threads {threads} \
+            --force
         
-        unzip -o {OUTDIR}/{wildcards.org}/dataset.zip -d {OUTDIR}/{wildcards.org}/
+        touch {output.checkm2_flag}
+        """
+
+rule move_filtered:
+    input:
+        quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
+        genomes_dir    = lambda wc: prev_stage_dir(wc.org, "filtered")
+    output:
+        filtered_dir  = directory(stage_dir("{org}", "filtered")),
+        filtered_list = f"{stage_dir('{org}', 'filtered')}/passed_genomes.txt"
+    threads:
+        1
+    params:
+        cont         = config["checkm2"]["Contamination"],
+        completeness = config["checkm2"]["Completeness"]
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    shell:
+        """
+        mkdir -p {output.filtered_dir}
+
+        awk -F' ' \
+            -v completeness={params.completeness} \
+            -v cont={params.cont} \
+            'NR > 1 && $2 >= completeness && $3 <= cont {{ print $1 }}' \
+            {input.quality_report} \
+        > {output.filtered_list}
+
+        while read genome; do
+            cp {input.genomes_dir}/${{genome}}.fna {output.filtered_dir}/
+        done < {output.filtered_list}
+        """
+
+
+rule skder:
+    input:
+        genomes_dir  = lambda wc: prev_stage_dir(wc.org, "derep"),
+        stage_list   = lambda wc: f"{prev_stage_dir(wc.org, 'derep')}/passed_genomes.txt"
+    output:
+        derep_dir  = directory(stage_dir("{org}", "derep")),
+        derep_list = f"{stage_dir('{org}', 'derep')}/derep_genomes.txt",   
+        flag       = f"{OUTDIR}/skder/{{org}}/dedup_done.flag"
+    threads: 16
+    params:
+        ani    = config['deduplication']['ani'],
+        min_af = config['deduplication']['min_af']
+    conda:
+        f"{config.get('env_dir')}/skder.yaml"
+    shell:
+        """
+        skder -g {input.genomes_dir} \
+              -o {output.derep_dir}  \
+              -i {params.ani}        \
+              -f {params.min_af}     \
+              -c {threads}
+
+        ls {output.derep_dir}/Dereplicated_Representative_Genomes/ \
+            | sed 's/\\.fna$//' \
+            > {output.derep_list}
+
+        touch {output.flag}
+        """
+
+rule download_gtdbtk_db:
+    output:
+        db_dir = directory(config["gtdb"]["db_path"]),
+        flag   = f"{config['gtdb']['db_path']}/download_done.flag"
+    params:
+        version = config["gtdb"].get("db_version", "latest")
+    conda:
+        f"{config.get('env_dir')}/gtdbtk.yaml"
+    shell:
+        """
+        download-db.sh {output.db_dir}
 
         touch {output.flag}
         """
 
 
-rule collect_proteomes:
+rule gtdbtk:
     input:
-        expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS)
+        genomes_dir = lambda wc: stage_dir(wc.org, STAGES[-1]),
+        derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
+        db_dir      = ancient(config["gtdb"]["db_path"]),
+        db_flag     = ancient(f"{config['gtdb']['db_path']}/download_done.flag")
     output:
-        f"{OUTDIR}/combined/all_{{org}}_proteomes.faa"
+        outdir = directory(f"{OUTDIR}/gtdbtk/{{org}}"),
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
+    threads:
+        config["gtdb"].get("threads", 16)
+    params:
+        db           = config["gtdb"]["db_path"],
+        extension    = config["gtdb"].get("extension",    "fna"),
+        prefix       = config["gtdb"].get("prefix",       "gtdbtk"),
+        min_perc_aa  = config["gtdb"].get("min_perc_aa",  10),
+        min_af       = config["gtdb"].get("min_af",       0.65),
+        pplacer_cpus = config["gtdb"].get("pplacer_cpus", 4),
+        scratch_dir  = config["gtdb"].get("scratch_dir",  "/tmp"),
+        extra_args   = config["gtdb"].get("extra_args",   "")
+    conda:
+        f"{config.get('env_dir')}/gtdbtk.yaml"
     shell:
         """
-        mkdir -p {OUTDIR}/combined
-        
-        find {OUTDIR} -name "*.faa" -exec cat {{}} + > {output}
+        export GTDBTK_DATA_PATH={params.db}
+
+        gtdbtk classify_wf \
+            --genome_dir   {input.genomes_dir}      \
+            --out_dir      {output.outdir}           \
+            --extension    {params.extension}        \
+            --prefix       {params.prefix}           \
+            --min_perc_aa  {params.min_perc_aa}      \
+            --min_af       {params.min_af}           \
+            --cpus         {threads}                 \
+            --pplacer_cpus {params.pplacer_cpus}     \
+            --scratch_dir  {params.scratch_dir}      \
+            {params.extra_args}
+
+        touch {output.flag}
         """
+# # rule bakta:
+# #     input:
+# #         genome = f"{OUTDIR}/{{org}}/{{org}}.fasta"
+# #     output:
+# #         outdir = directory(f"{OUTDIR}/{{org}}/bakta")
+# #     params:
+# #         prefix = "{org}",
+# #         bakta_db = config['bakta_db']
+# #     threads: 8
+# #     conda:
+# #         "envs/bakta.yaml"
+# #     shell:
+# #         """
+# #         bakta \
+# #             --db {params.bakta_db} \
+# #             --output {output.outdir} \
+# #             --prefix {params.prefix} \
+# #             --threads {threads} \
+# #             {input.genome}
+#         """
+
+
+# # rule collect_proteomes:
+# #     input:
+# #         expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS)
+
+# #     output:
+# #         faa = f"{OUTDIR}/combined/all_{{org}}_proteomes.faa",
+# #         csv = f"{OUTDIR}/combined/all_{{org}}_proteomes.csv",
+
+# #     shell:
+# #         r"""
+# #         mkdir -p {OUTDIR}/combined
+
+# #         # Combine FASTA files
+# #         find {OUTDIR} -name "*.faa" -exec cat {{}} + > {output.faa}
+
+# #         # Create accession ↔ genome mapping CSV
+# #         echo "accession,genome_file,header" > {output.csv}
+
+# #         find {OUTDIR} -name "*.faa" | while read faa; do
+
+# #             genome=$(basename "$(dirname "$faa")")
+
+# #             grep "^>" "$faa" | while read header; do
+
+# #                 full_header="${{header#>}}"
+# #                 accession=$(echo "$full_header" | cut -d' ' -f1)
+
+# #                 # Escape quotes for CSV safety
+# #                 escaped_header=$(printf '%s\n' "$full_header" | sed 's/"/""/g')
+
+# #                 echo "$accession,$genome,\"$escaped_header\""
+
+# #             done
+
+# #         done >> {output.csv}
+# #         """

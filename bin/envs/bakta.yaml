@@ -1,0 +1,14 @@
+name: bakta
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - bakta
+  - diamond
+  - blast
+  - hmmer
+  - infernal
+  - aragorn
+  - amrfinderplus

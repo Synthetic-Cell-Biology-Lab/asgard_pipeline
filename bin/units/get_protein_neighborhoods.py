@@ -11,11 +11,10 @@ from Bio import SeqIO
 ############################################################
 # Load protein annotations from parquet
 ############################################################
-
 def load_ips_annotations(proteins, parquet_file):
 
     if not proteins:
-        return {}, {}
+        return {}, {}, {}
 
     con = duckdb.connect()
 
@@ -31,8 +30,17 @@ def load_ips_annotations(proteins, parquet_file):
     result = con.execute(f"""
         SELECT
             p.protein,
-            COALESCE(s.ipr_acc, s.sig_acc) AS acc,
-            COALESCE(s.ipr_desc, s.sig_desc) AS desc
+            COALESCE(s.ipr_acc, s.sig_acc)                           AS acc,
+            COALESCE(s.ipr_desc, s.sig_desc)                         AS desc,
+            CASE 
+                WHEN LOWER(s.analysis) = 'pfam' 
+                THEN s.sig_acc 
+            END AS pfam_acc,
+
+            CASE 
+                WHEN LOWER(s.analysis) = 'pfam' 
+                THEN s.sig_desc 
+            END AS pfam_desc            
         FROM protein_list p
         LEFT JOIN read_parquet('{parquet_file}') s
         ON p.protein = s.protein
@@ -62,7 +70,24 @@ def load_ips_annotations(proteins, parquet_file):
         .to_dict()
     )
 
-    return acc_lookup, desc_lookup
+    pfam_lookup = (
+        result
+        .dropna(subset=["pfam_acc"])
+        .groupby("protein")["pfam_acc"]
+        .apply(lambda x:
+            "; ".join(sorted(set(x)))
+        )
+        .to_dict()
+    )
+
+    pfam_desc_lookup = (
+        result
+        .dropna(subset=["pfam_acc", "pfam_desc"])
+        .drop_duplicates(subset=["pfam_acc"])
+        .set_index("pfam_acc")["pfam_desc"]
+        .to_dict()
+    )
+    return acc_lookup, desc_lookup, pfam_lookup, pfam_desc_lookup
 
 
 ############################################################
@@ -463,6 +488,11 @@ def main():
         default=None
     )
 
+    parser.add_argument(
+        "--pfam_out",
+        required=True
+    )
+
     args = parser.parse_args()
 
     ########################################################
@@ -583,7 +613,7 @@ def main():
         ]
     )
 
-    acc_lookup, desc_lookup = (
+    acc_lookup, desc_lookup, pfam_lookup, pfam_desc_lookup = (
         load_ips_annotations(
             proteins,
             args.ips
@@ -591,22 +621,23 @@ def main():
     )
 
     neighborhood_df["IPS_acc"] = (
-        neighborhood_df[
-            "neighbor_locus"
-        ].map(
-            lambda x:
-                acc_lookup.get(x, "")
-        )
+        neighborhood_df["neighbor_locus"]
+        .map(lambda x: acc_lookup.get(x, ""))
     )
 
     neighborhood_df["IPS_desc"] = (
-        neighborhood_df[
-            "neighbor_locus"
-        ].map(
-            lambda x:
-                desc_lookup.get(x, "")
-        )
+        neighborhood_df["neighbor_locus"]
+        .map(lambda x: desc_lookup.get(x, ""))
     )
+
+    neighborhood_df["Pfam_acc"] = (
+        neighborhood_df["neighbor_locus"]
+        .map(lambda x: pfam_lookup.get(x, ""))
+    )
+
+    with open(args.pfam_out, 'w') as out:
+        for k, v in pfam_desc_lookup.items():
+            out.write(f"{k}\t{v}\n")
 
     ########################################################
     # Save
