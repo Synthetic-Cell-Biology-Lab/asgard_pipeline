@@ -366,6 +366,10 @@ function PipelinePanel() {
     () => params && original && JSON.stringify(params) !== JSON.stringify(original),
     [params, original]
   )
+  const templateCandidates = useMemo(
+    () => configs.filter(c => c.name.endsWith('.template.yaml')).map(c => c.name),
+    [configs]
+  )
 
   // ── fetch configs (existing flow) ──────────────────────────────────────────
   const fetchConfigs = useCallback(async () => {
@@ -405,6 +409,7 @@ function PipelinePanel() {
 
   // ── select a config or template from the list ──────────────────────────────
   const handleSelectConfig = async (name) => {
+    setMode('existing')
     // Capture mode synchronously — avoids stale-closure bug after awaits
     const currentMode = mode
 
@@ -439,6 +444,8 @@ function PipelinePanel() {
     }
   }
 
+  const handleParamChange = (path, value) => setParams(p => setNestedValue(p, path, value))
+  const handleReset = () => setParams({ ...original })
   const handleBack = () => {
     setMode(null)
     setSelected(null)
@@ -457,6 +464,12 @@ function PipelinePanel() {
 
   const handleParamChange = (path, value) => setParams(p => setNestedValue(p, path, value))
   const handleReset = () => setParams(JSON.parse(JSON.stringify(original)))
+
+  const handleStartFromTemplate = async (name) => {
+    const templateConfigName = `${name}.template.yaml`
+    await handleSelectConfig(templateConfigName)
+    setMode('template')
+  }
 
   const handleSaveNew = async (filename, newParams) => {
     const res = await fetch(`${API}/configs`, {
@@ -542,6 +555,7 @@ function PipelinePanel() {
     }
   }
 
+  const showConfigPicker = mode === 'existing' || (!!selected && mode === 'template')
   // ── derived display flags ──────────────────────────────────────────────────
   const showConfigPicker  = mode === 'existing' || mode === 'template'
   const showQuestionnaire = mode === 'questionnaire' && !!params
@@ -572,6 +586,12 @@ function PipelinePanel() {
             <button
               className="btn"
               onClick={() => {
+                if (templateCandidates.length > 0) {
+                  handleSelectConfig(templateCandidates[0])
+                  setMode('template')
+                }
+              }}
+              disabled={templateCandidates.length === 0}
                 setSelected(null)
                 setParams(null)
                 setOriginal(null)
@@ -594,6 +614,8 @@ function PipelinePanel() {
           selected={selected}
           onSelect={handleSelectConfig}
           configsDir={configsDir}
+          onRefresh={fetchConfigs}
+          loading={loadingConfigs}
           onRefresh={mode === 'template' ? fetchTemplates : fetchConfigs}
           onBack={handleBack}
           loading={loadingConfigs}
@@ -603,6 +625,7 @@ function PipelinePanel() {
 
       {loadingParams && <p className="dim loading-params">Loading parameters…</p>}
 
+      {params && selected && mode && (
       {/* Step 2 (template flow) — questionnaire generated from template fields */}
       {showQuestionnaire && (
         <Questionnaire
