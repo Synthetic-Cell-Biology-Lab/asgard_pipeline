@@ -1,0 +1,37 @@
+pipeline: updation
+reason: "test run"
+cores: 4
+log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
+run_id: example_run
+env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+
+output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
+cds:
+  bakta_db: ""
+  existing: "/home/anirudh/asgard_pipeline/database/cds_genomes"
+organisms:
+  - name: "promethearchaeati"
+    assembly_level: all
+    refseq_only: false
+deduplication:
+  ani: 99.0
+  min_af: 0.3
+checkm2:
+  db_path: /home/anirudh/asgard_pipeline/database/software_dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd
+  Contamination: 10
+  Completeness: 15
+pipeline_stages:
+  - raw
+  - filtered
+  - derep
+gtdb:
+  db_path:      /home/anirudh/asgard_pipeline/database/software_dbs/gtdb
+  mash_db:      /path/to/gtdbtk_db/mash/gtdb.msh   # reused across runs
+  extension:    fna
+  prefix:       gtdbtk
+  min_perc_aa:  10
+  min_af:       0.65
+  threads:      16
+  pplacer_cpus: 2
+  scratch_dir:  /tmp
+  extra_args:   ""

@@ -1,64 +1,248 @@
 from datetime import datetime
 import os
+import glob
 
 shell.executable("/bin/bash")
 
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
-PROTEIN = config["protein_name"]
-LOG = config["pipeline_log"]
-RUN_ID = config.get("run_id")
+PROTEIN        = config["protein_name"]
+LOG            = config["pipeline_log"]
+RUN_ID         = config.get("run_id")
+EXPLORATION_ID = config.get("exploration_id")
+
 if not RUN_ID:
-    raise ValueError("run_id is required for phylogeny pipeline continuation.")
+    raise ValueError("run_id is required.")
+if not EXPLORATION_ID:
+    raise ValueError("exploration_id is required.")
 
-BASE_DIR = os.getcwd()
-RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
-PHYLO_DIR = f"{RESULT_DIR}/final_phylogeny"
-LOG_DIR = f"{RESULT_DIR}/Logs"
-os.makedirs(PHYLO_DIR, exist_ok=True)
-os.makedirs(LOG_DIR, exist_ok=True)
+BASE_DIR        = os.getcwd()
+EXPLORATION_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{EXPLORATION_ID}/extraction_exploration"
+PARENT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{EXPLORATION_ID}"
+PHYLO_DIR       = f"{PARENT_DIR}/final_phylogeny"   # pre-existing, input only
+RESULT_DIR      = f"{PARENT_DIR}/{RUN_ID}"          # all new outputs go here
+LOG_DIR         = f"{RESULT_DIR}/Logs"
 
-# Optional helpers: allow curated input creation via existing helper modules
+os.makedirs(RESULT_DIR, exist_ok=True)
+os.makedirs(LOG_DIR,    exist_ok=True)
+
 if config.get("from_manual", False):
     include: "rules/from_manual.smk"
 elif config.get("from_fasta_csv", False):
     include: "rules/from_fasta_and_csv.smk"
 
+############################################################
+# Helpers
+############################################################
+
+def iqtree_optional_flags(p):
+    flags = []
+    if p.get("bootstrap") not in (None, "null", "None"):
+        flags.append(f"{p['bootstrap_method']} {p['bootstrap']}")
+        flags.append("--bnni")
+    if p.get("alrt") not in (None, "null", "None"):
+        flags.append(f"-alrt {p['alrt']}")
+    if p.get("outgroup") not in (None, "null", "None"):
+        flags.append(f"-o {p['outgroup']}")
+    if p.get("niter") not in (None, "null", "None"):
+        flags.append(f"-niter {p['niter']}")
+    return " ".join(flags)
+
+############################################################
+# Rules
+############################################################
+
 rule all:
     input:
-        f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile",
+        f"{RESULT_DIR}/{PROTEIN}_phylo.treefile",
         f"{RESULT_DIR}/phylogeny_pipeline.log"
+
 
 rule assert_review_inputs:
     output:
         touch(f"{RESULT_DIR}/PHYLOGENY_INPUTS_READY.flag")
     params:
-        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
-        review_flag = f"{RESULT_DIR}/REVIEW_DONE.flag"
+        rev_fasta   = f"{PARENT_DIR}/{PROTEIN}.rev.fasta",
     run:
-        missing = [p for p in [params.rev_fasta, params.review_flag] if not os.path.exists(p)]
+        missing = [
+            p for p in [params.rev_fasta]
+            if not os.path.exists(p)
+        ]
         if missing:
-            raise ValueError("Missing continuation inputs: " + ", ".join(missing))
+            raise ValueError(
+                "Missing continuation inputs: " + ", ".join(missing)
+            )
+
+
+rule align:
+    input:
+        ready = f"{RESULT_DIR}/PHYLOGENY_INPUTS_READY.flag",
+        fasta = f"{PARENT_DIR}/{PROTEIN}.rev.fasta"
+    output:
+        aln   = f"{RESULT_DIR}/{PROTEIN}.aln.fasta"
+    threads:
+        config["alignment"].get(
+            config["alignment"]["method"], {}
+        ).get("threads", 8)
+    params:
+        method = config["alignment"]["method"],
+        famsa  = config["alignment"].get("famsa",  {}),
+        mafft  = config["alignment"].get("mafft",  {})
+    conda:
+        f"{config['env_dir']}/phylogeny.yaml"
+    log:
+        f"{LOG_DIR}/{PROTEIN}.align.log"
+    shell:
+        """
+        if [ "{params.method}" = "famsa" ]; then
+            famsa \
+                -t {threads} \
+                {params.famsa[extra_args]} \
+                {input.fasta} \
+                {output.aln} \
+            > {log} 2>&1
+
+        elif [ "{params.method}" = "mafft" ]; then
+            mafft \
+                {params.mafft[mode]} \
+                --thread {threads} \
+                {params.mafft[extra_args]} \
+                {input.fasta} \
+                > {output.aln} \
+                2> {log}
+        else
+            echo "Unknown alignment method: {params.method}" && exit 1
+        fi
+        """
+
+
+rule trim:
+    input:
+        aln     = f"{RESULT_DIR}/{PROTEIN}.aln.fasta"
+    output:
+        trimmed = f"{RESULT_DIR}/{PROTEIN}.trimmed.fasta"
+    params:
+        method  = config["trimming"]["method"],
+        trimal  = config["trimming"].get("trimal",  {}),
+        bmge    = config["trimming"].get("bmge",    {}),
+        clipkit = config["trimming"].get("clipkit", {})
+    conda:
+        f"{config['env_dir']}/phylogeny.yaml"
+    log:
+        f"{LOG_DIR}/{PROTEIN}.trim.log"
+    shell:
+        """
+        if [ "{params.method}" = "trimal" ]; then
+            trimal \
+                -in  {input.aln}          \
+                -out {output.trimmed}     \
+                {params.trimal[mode]}     \
+                {params.trimal[extra_args]} \
+            > {log} 2>&1
+
+        elif [ "{params.method}" = "bmge" ]; then
+            BMGE \
+                -i {input.aln}             \
+                -o {output.trimmed}        \
+                -t AA                      \
+                -m {params.bmge[matrix]}   \
+                -g {params.bmge[gap_rate]} \
+                -h {params.bmge[entropy]}  \
+                {params.bmge[extra_args]}  \
+            > {log} 2>&1
+
+        elif [ "{params.method}" = "clipkit" ]; then
+            clipkit \
+                {input.aln}                  \
+                -m {params.clipkit[mode]}    \
+                -o {output.trimmed}          \
+                {params.clipkit[extra_args]} \
+            > {log} 2>&1
+
+        else
+            echo "Unknown trimming method: {params.method}" && exit 1
+        fi
+        """
+
 
 rule run_phylogeny:
     input:
         ready = f"{RESULT_DIR}/PHYLOGENY_INPUTS_READY.flag",
-        fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta"
+        fasta = f"{RESULT_DIR}/{PROTEIN}.trimmed.fasta"
     output:
-        tree = f"{PHYLO_DIR}/{PROTEIN}_phylo.treefile"
-    threads: config.get("phylogeny_threads", 8)
+        tree  = f"{RESULT_DIR}/{PROTEIN}_phylo.treefile"
+    threads:
+        config["tree"]["iqtree"].get("threads", 8)
+    params:
+        prefix   = f"{RESULT_DIR}/{PROTEIN}_phylo",
+        p        = config["tree"]["iqtree"],
+        optional = iqtree_optional_flags(config["tree"]["iqtree"])
     conda:
         f"{config['env_dir']}/phylogeny.yaml"
-    params:
-        prefix = f"{PHYLO_DIR}/{PROTEIN}_phylo"
+    log:
+        f"{LOG_DIR}/{PROTEIN}.iqtree.log"
     shell:
         """
-        bash bin/units/phylogeny_pipeline.sh \
-            {input.fasta} \
-            {params.prefix} \
-            {threads}
+        iqtree \
+            -s     {input.fasta}        \
+            -m     {params.p[model]}    \
+            -st    {params.p[seqtype]}  \
+            --prefix {params.prefix}    \
+            -seed  {params.p[seed]}     \
+            -ninit {params.p[ninit]}    \
+            -ntop  {params.p[ntop]}     \
+            -nbest {params.p[nbest]}    \
+            -nstop {params.p[nstop]}    \
+            -maxit {params.p[max_iter]} \
+            -eps   {params.p[epsilon]}  \
+            -T     {threads}            \
+            {params.optional}           \
+            --redo                      \
+            {params.p[extra_args]}      \
+        > {log} 2>&1
         """
+
+
+rule upload_to_itol:
+    input:
+        tree        = f"{RESULT_DIR}/{PROTEIN}_phylo.treefile",
+        colorstrip  = f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt",
+        annot_files = lambda wildcards: sorted(
+            glob.glob(f"{RESULT_DIR}/annotation/*.txt")
+        ),
+        default     = lambda wildcards: config.get("default_annotation", []),
+        marker      = f"{RESULT_DIR}/annotation.done.flag",
+        itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
+        itol_msa    = f"{RESULT_DIR}/itol_msa.txt"
+    output:
+        tree_ids = f"{RESULT_DIR}/{PROTEIN}_itol_uploaded.flag"
+    params:
+        project   = config.get("itol_project", "Asgard"),
+        tree_name = f"{RUN_ID}_{PROTEIN}",
+        all_annots = lambda wildcards, input: (
+            sorted(glob.glob(f"{RESULT_DIR}/annotation/*.txt"))
+            + ([input.colorstrip])
+            + (input.default if isinstance(input.default, list) else [input.default])
+        ),
+        domain_files = lambda wildcards, input: sorted(
+            glob.glob(f"{input.itol_dir}/*.txt")
+        ),
+    log:
+        f"{LOG_DIR}/{PROTEIN}.itol.log"
+    shell:
+        """
+        bash {CURRENT_DIR}/bin/units/itol_upload.sh \
+            {input.tree}            \
+            {params.project}        \
+            {params.tree_name}      \
+            {output.tree_ids}       \
+            {params.all_annots:q}   \
+            {params.domain_files:q} \
+            {input.itol_msa}        \
+        > {log} 2>&1
+        """
+
 
 rule link_log_file:
     output:

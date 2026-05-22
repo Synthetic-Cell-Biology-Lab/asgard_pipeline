@@ -5,8 +5,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--genome_file",        required=True)
     parser.add_argument("--taxa_levels",        required=True)
-    parser.add_argument("--completeness_col",   default="completeness")
-    parser.add_argument("--contamination_col",  default="contamination")
+    parser.add_argument("--completeness_col",   default="Completeness")
+    parser.add_argument("--contamination_col",  default="Contamination")
     parser.add_argument("--output",             required=True)
     args = parser.parse_args()
 
