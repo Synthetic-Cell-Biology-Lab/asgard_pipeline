@@ -8,7 +8,7 @@ exploration_id: actin_run4 #run id to continue
 run_id:         phyl_run1
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
 base_dir: "/home/anirudh/asgard_pipeline"
-env_dir:        /home/anirudh/asgard_pipeline/bin/envs
+env_dir:        bin/envs
 itol_project:   Asgard
 reason: To perform phylogenetic analysis for actin
 
@@ -26,14 +26,15 @@ from_fasta_csv: false
 # ============================================================
 
 alignment:
-  method: famsa           # famsa | mafft
+  method: mafft           # famsa | mafft
 
   famsa:
     threads:    8
     extra_args: ""
 
   mafft:
-    mode:       "--localpair"  # --auto |--localpair | --globalpair | --genafpair
+    mode:       "--linsi"  # --auto | --linsi | --ginsi | --einsi
+                          # --localpair | --globalpair
     threads:    8
     extra_args: ""
 
@@ -42,7 +43,7 @@ alignment:
 # ============================================================
 
 trimming:
-  method: clipkit          # trimal | bmge | clipkit
+  method: trimal          # trimal | bmge | clipkit
 
   trimal:
     mode:       "-automated1"   # -automated1 | -gappyout
@@ -100,4 +101,4 @@ tree:
     threads:          8
 
     # Any additional flags not covered above
-    extra_args:       "-redo"
+    extra_args:       ""
