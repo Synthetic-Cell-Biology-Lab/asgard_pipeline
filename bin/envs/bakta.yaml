@@ -11,4 +11,6 @@ dependencies:
   - hmmer
   - infernal
   - aragorn
-  - amrfinderplus
+  - ncbi-amrfinderplus
+  - orthofinder = 3.1.5
+  - mmseqs2

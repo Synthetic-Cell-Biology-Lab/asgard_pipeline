@@ -160,6 +160,29 @@ rule table2itol:
             {input.annot}
         """
 
+# madRoot
+
+rule madroot:
+    input:
+        tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile"
+    output:
+        rooted_tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile"
+
+    threads: config.get("phylogeny_threads", 8)
+    conda:
+        f"{config['env_dir']}/phylogeny.yaml"
+    params:
+        prefix = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree"
+    message:
+        """
+        ==========================================
+        🌳 rooting tree using madroot
+        ==========================================
+        """
+    shell:
+        """
+        madRoot {input.tree} > {output.rooted_tree}
+        """
 
 
 ########################################
@@ -168,7 +191,7 @@ rule table2itol:
 
 rule upload_to_itol:
     input:
-        tree        = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
+        tree        = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile",
         colorstrip  = f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt",
         annot_files = lambda wildcards: sorted(
             glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
@@ -206,82 +229,3 @@ rule upload_to_itol:
 
 
 
-########################################
-# Manual Review Gate
-########################################
-
-REVIEW_GATE_INPUTS = [
-    f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
-    f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile"
-]
-
-if config.get("run_itol_upload", False):
-    REVIEW_GATE_INPUTS.append(f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag")
-
-
-
-rule review_gate:
-    input:
-        REVIEW_GATE_INPUTS
-    output:
-        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
-        marker = f"{RESULT_DIR}/REVIEW_DONE.flag"
-    run:
-        import os
-
-        if os.path.exists(output.rev_fasta) and os.path.exists(output.marker):
-            print("✅ Manual review already completed.")
-            return
-
-        print("\n🔍 MANUAL REVIEW REQUIRED\n")
-        print(f"Review FASTA: {input[0]}")
-        print(f"Tree file: {input[1]}")
-
-        if len(input) > 2:
-            print(f"iTOL upload flag: {input[2]}")
-        print(f"Save curated file as: {output.rev_fasta}")
-        print(f"Then run: touch {output.marker}\n")
-
-        raise SystemExit(1)
-
-rule make_rev_csv:
-    input:
-        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
-        marker = f"{RESULT_DIR}/REVIEW_DONE.flag",
-        unr_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
-    output:
-        rev_csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
-    
-    conda:
-        f"{config['env_dir']}/Reg.yaml"
-
-    run:
-        import pandas as pd
-
-        # ── Extract locus_tags from FASTA ───────────────────────
-        locus_tags = set()
-
-        with open(input.rev_fasta) as f:
-            for line in f:
-                if line.startswith(">"):
-                    locus = line[1:].strip().split()[0]
-                    locus_tags.add(locus)
-
-        # ── Load CSV ────────────────────────────────────────────
-        df = pd.read_csv(input.unr_csv)
-
-        if "locus_tag" not in df.columns:
-            raise ValueError("Column 'locus_tag' not found in CSV")
-
-        # Clean just in case
-        df["locus_tag"] = df["locus_tag"].astype(str).str.strip()
-
-        # ── Filter ──────────────────────────────────────────────
-        filtered = df[df["locus_tag"].isin(locus_tags)]
-
-        # ── Save ────────────────────────────────────────────────
-        filtered.to_csv(output.rev_csv, index=False)
-
-        # ── Debug (optional but useful) ─────────────────────────
-        print(f"Extracted {len(locus_tags)} locus tags")
-        print(f"Matched {len(filtered)} rows")

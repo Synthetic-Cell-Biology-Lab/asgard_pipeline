@@ -53,6 +53,19 @@ def iqtree_optional_flags(p):
 # Rules
 ############################################################
 
+FINAL_TARGETS = [
+        f"{RESULT_DIR}/{PROTEIN}_phylo.treefile",
+        f"{RESULT_DIR}/phylogeny_pipeline.log"
+]
+
+if config['extend_phylogeny']['add_sequences']:
+    FINAL_TARGETS.append()
+
+
+
+
+
+
 rule all:
     input:
         f"{RESULT_DIR}/{PROTEIN}_phylo.treefile",
@@ -73,6 +86,102 @@ rule assert_review_inputs:
             raise ValueError(
                 "Missing continuation inputs: " + ", ".join(missing)
             )
+
+
+rule make_rev_csv:
+    input:
+        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
+        unr_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+    output:
+        rev_csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
+    
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+
+    run:
+        import pandas as pd
+
+        # ── Extract locus_tags from FASTA ───────────────────────
+        locus_tags = set()
+
+        with open(input.rev_fasta) as f:
+            for line in f:
+                if line.startswith(">"):
+                    locus = line[1:].strip().split()[0]
+                    locus_tags.add(locus)
+
+        # ── Load CSV ────────────────────────────────────────────
+        df = pd.read_csv(input.unr_csv)
+
+        if "locus_tag" not in df.columns:
+            raise ValueError("Column 'locus_tag' not found in CSV")
+
+        # Clean just in case
+        df["locus_tag"] = df["locus_tag"].astype(str).str.strip()
+
+        # ── Filter ──────────────────────────────────────────────
+        filtered = df[df["locus_tag"].isin(locus_tags)]
+
+        # ── Save ────────────────────────────────────────────────
+        filtered.to_csv(output.rev_csv, index=False)
+
+        # ── Debug (optional but useful) ─────────────────────────
+        print(f"Extracted {len(locus_tags)} locus tags")
+        print(f"Matched {len(filtered)} rows")
+
+
+
+rule add_fasta_sequences:
+    input:
+        rev_fasta = f"{PARENT_DIR}/{PROTEIN}.rev.fasta",
+        fasta = config['extend_phylogeny']['additional_fasta']
+    output:
+        full_fasta = f"{PARENT_DIR}/{PROTEIN}.final.fasta"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"       
+    run:
+        from Bio import SeqIO
+
+        input_fastas = [input.rev_fasta, input.fasta]
+        output_fasta = output.fasta
+
+        records = []
+        seen = set()
+
+        for fasta in input_fastas:
+            for i, record in enumerate(SeqIO.parse(fasta, "fasta"), start=1):
+
+                # Normalize header
+                clean_id = record.id.split()[0]
+
+                clean_id = (
+                    clean_id.replace("|", "_")
+                            .replace("/", "_")
+                            .replace(":", "_")
+                            .replace(" ", "_")
+                )
+
+                new_id = f"{clean_id}"
+
+                # Skip duplicate IDs
+                if new_id in seen:
+                    continue
+
+                seen.add(new_id)
+
+                record.id = new_id
+                record.name = new_id
+                record.description = ""
+
+                records.append(record)
+
+        SeqIO.write(records, output_fasta, "fasta")
+
+        print(f"Merged and normalized {len(records)} sequences")       
+
+
+
+
 
 
 rule align:

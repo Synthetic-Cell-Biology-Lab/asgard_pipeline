@@ -153,7 +153,7 @@ p <- ggplot(counts, aes(x = count, y = class, fill = key)) +
     inherit.aes = FALSE,
     hjust       = -0.35,
     vjust       = 0.38,
-    size        = 3.2,
+    size        = 5,
     fontface    = "bold",
     color       = TEXT_DARK,
     family      = FONT_MAIN
@@ -198,17 +198,17 @@ p <- ggplot(counts, aes(x = count, y = class, fill = key)) +
     plot.title = element_text(
       family   = FONT_TITLE,
       face     = "bold",
-      size     = 15,
+      size     = 18,
       color    = TEXT_DARK,
       margin   = margin(b = 3)
     ),
     plot.subtitle = element_text(
-      size   = 9.5,
+      size   = 13,
       color  = TEXT_MID,
       margin = margin(b = 14)
     ),
     plot.caption = element_text(
-      size   = 8,
+      size   = 12,
       color  = TEXT_LIGHT,
       hjust  = 0,
       margin = margin(t = 10)
@@ -216,14 +216,13 @@ p <- ggplot(counts, aes(x = count, y = class, fill = key)) +
 
     # ── Axes ─────────────────────────────────────────────────
     axis.title.x = element_text(
-      size   = 9.5,
+      size   = 13,
       color  = TEXT_MID,
       margin = margin(t = 8)
     ),
     axis.text.y  = element_text(
-      size   = 9.5,
-      color  = TEXT_DARK,
-      face   = "italic",          # italics for taxonomic names
+      size   = 13,
+      color  = TEXT_DARK,       # italics for taxonomic names
       hjust  = 1
     ),
     axis.text.x  = element_text(size = 9, color = TEXT_MID),
@@ -237,12 +236,12 @@ p <- ggplot(counts, aes(x = count, y = class, fill = key)) +
     legend.position      = "right",
     legend.justification = "top",
     legend.title         = element_text(
-      size     = 8.5,
+      size     = 12,
       face     = "bold",
       color    = TEXT_DARK,
       margin   = margin(b = 6)
     ),
-    legend.text  = element_text(size = 7.8, color = TEXT_MID),
+    legend.text  = element_text(size = 10, color = TEXT_MID),
     legend.key   = element_rect(fill = NA, color = NA),
     legend.background = element_rect(fill = NA, color = NA),
     legend.spacing.y  = unit(0.18, "lines")

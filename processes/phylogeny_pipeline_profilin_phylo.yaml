@@ -1,104 +1,60 @@
-
-# ============================================================
-# Phylogeny Pipeline Config
-# ============================================================
 pipeline: phylogeny_pipeline
-protein_name:   profilin
-run_id: profilin_run3 #run id to continue
-phyl_id:         phyl_run1
-log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-base_dir: "/home/anirudh/asgard_pipeline"
-env_dir:        /home/anirudh/asgard_pipeline/bin/envs
-itol_project:   Asgard
+protein_name: profilin
+run_id: profilin_run3
+phyl_id: phyl_run3
+log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
+base_dir: /home/anirudh/asgard_pipeline
+env_dir: /home/anirudh/asgard_pipeline/bin/envs
+itol_project: Asgard
 reason: To perform phylogenetic analysis for profilin
-
-# Optional: path to a default annotation file passed to iTOL
-# on every upload regardless of run-specific annotations
 default_annotation: null
-
-# Optional: override input source (both false = expect
-# rev.fasta and REVIEW_DONE.flag to already exist in PARENT_DIR)
-from_manual:    false
+from_manual: false
 from_fasta_csv: false
 
-# ============================================================
-# Alignment
-# ============================================================
+extend_phylogeny:
+  add_sequences: True
+  additional_fasta: #fasta file containing new sequnces
+  uniprot_ncbi_annotation: True
+
 
 alignment:
-  method: famsa           # famsa | mafft
-
+  method: famsa
   famsa:
-    threads:    8
-    extra_args: ""
-
+    threads: 8
+    extra_args: ''
   mafft:
-    mode:       "--linsi"  # --auto | --linsi | --ginsi | --einsi
-                          # --localpair | --globalpair
-    threads:    8
-    extra_args: ""
-
-# ============================================================
-# Trimming
-# ============================================================
-
+    mode: --linsi
+    threads: 8
+    extra_args: ''
 trimming:
-  method: trimal          # trimal | bmge | clipkit
-
+  method: trimal
   trimal:
-    mode:       "-automated1"   # -automated1 | -gappyout
-                                # -strict | -strictplus
-    extra_args: ""
-
+    mode: -automated1
+    extra_args: ''
   bmge:
-    matrix:     BLOSUM62  # BLOSUM30 | BLOSUM45 | BLOSUM62
-                          # BLOSUM75 | BLOSUM90 | PAM250
-    gap_rate:   0.5       # -g: max gap rate per column (0-1)
-    entropy:    0.5       # -h: entropy threshold       (0-1)
-    extra_args: ""
-
+    matrix: BLOSUM62
+    gap_rate: 0.5
+    entropy: 0.5
+    extra_args: ''
   clipkit:
-    mode:       "smart-gap"   # smart-gap | gappy | kpic
-                              # kpic-smart-gap | kpi | kpi-smart-gap
-    extra_args: ""
-
-# ============================================================
-# Tree construction
-# ============================================================
-
+    mode: smart-gap
+    extra_args: ''
 tree:
   method: iqtree
-
   iqtree:
-    # Substitution model
-    # TEST = ModelFinder auto-select
-    # or specify directly e.g. LG+G4, WAG+R4, JTT+F+I+G4
-    model:            "LG"
-    seqtype:          "AA"     # AA | DNA | CODON | MORPH
-
-    # Bootstrap
-    bootstrap:        1000     # number of replicates; null = skip
-    bootstrap_method: "-B"     # -B = UFBoot2 (recommended)
-                               # -b = standard bootstrap (slow)
-    alrt:             1000     # SH-aLRT replicates; null = skip
-
-    # Rooting
-    outgroup:         null     # taxon name; null = midpoint rooting
-
-    # Reproducibility
-    seed:             12345
-
-    # Tree search
-    ninit:            100      # initial parsimony trees
-    ntop:             20       # top initial trees retained
-    nbest:            5        # best trees retained during search
-    nstop:            200      # stop after n iterations without improvement
-    niter:            null     # max iterations; null = auto
-    max_iter:         1000     # hard ceiling on total iterations (-maxit)
-    epsilon:          0.01     # likelihood convergence threshold (-eps)
-
-    # Resources
-    threads:          8
-
-    # Any additional flags not covered above
-    extra_args:       ""
+    model: LG
+    seqtype: AA
+    bootstrap: 1000
+    bootstrap_method: -B
+    alrt: 1000
+    outgroup: null
+    seed: 12345
+    ninit: 100
+    ntop: 20
+    nbest: 5
+    nstop: 200
+    niter: null
+    max_iter: 1000
+    epsilon: 0.01
+    threads: 8
+    extra_args: ''

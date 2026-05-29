@@ -5,3 +5,4 @@ channels:
   - defaults
 dependencies:
   - gtdbtk=2.7.2
+  - pigz

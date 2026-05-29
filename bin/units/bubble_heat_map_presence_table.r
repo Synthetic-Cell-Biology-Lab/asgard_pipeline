@@ -1,6 +1,10 @@
 #!/usr/bin/env Rscript
 
-suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(viridis)
+  library(ggrepel)
+})
 
 # -----------------------------
 # Parse arguments
@@ -8,7 +12,7 @@ suppressPackageStartupMessages(library(tidyverse))
 
 args <- commandArgs(trailingOnly = TRUE)
 
-if(length(args) < 5){
+if (length(args) < 5) {
   stop("Usage: Rscript copy_heatmap.R <csv> <tax_level> <genome_col> <protein_col> <outfile> --proteins <p1 p2 ...>")
 }
 
@@ -20,32 +24,26 @@ outfile     <- args[5]
 
 proteins_idx <- which(args == "--proteins")
 
-if(length(proteins_idx) == 0){
+if (length(proteins_idx) == 0) {
   stop("Must provide --proteins followed by protein names")
 }
 
 protein_list <- args[(proteins_idx + 1):length(args)]
-
 protein_list <- gsub("^['\"]|['\"]$", "", protein_list)
 protein_list <- trimws(protein_list)
 
 # -----------------------------
-# Full taxonomic hierarchy (coarse → fine)
+# Full taxonomic hierarchy (coarse -> fine)
 # -----------------------------
 
-TAX_HIERARCHY <- c("phylum", "class", "order", "family", "genus")
-
-# Ranks that are ABOVE (i.e. ancestral to) the requested tax_level.
-# These are used to build a hierarchical sort key so that sub-taxa of
-# the same parent always appear together in the plot.
-
+TAX_HIERARCHY  <- c("phylum", "class", "order", "family", "genus")
 tax_level_idx  <- match(tax_level, TAX_HIERARCHY)
 
 if (is.na(tax_level_idx)) {
   stop(paste("tax_level must be one of:", paste(TAX_HIERARCHY, collapse = ", ")))
 }
 
-ancestor_ranks <- TAX_HIERARCHY[seq_len(tax_level_idx)]   # includes tax_level itself
+ancestor_ranks <- TAX_HIERARCHY[seq_len(tax_level_idx)]
 
 # -----------------------------
 # Load dataframe
@@ -53,7 +51,6 @@ ancestor_ranks <- TAX_HIERARCHY[seq_len(tax_level_idx)]   # includes tax_level i
 
 df <- read_csv(input_csv, show_col_types = FALSE)
 
-# Check that all required columns are present
 required_cols <- c(genome_col, protein_col, ancestor_ranks)
 missing_cols  <- setdiff(required_cols, colnames(df))
 if (length(missing_cols) > 0) {
@@ -71,28 +68,16 @@ cat("Unique proteins:", unique(df[[protein_col]]), "\n")
 cat("Unique taxa:", unique(df[[tax_level]]), "\n")
 
 # -----------------------------
-# Build hierarchical sort order for taxa
-#
-# For each unique taxon at `tax_level`, collect the values of every
-# ancestor rank (phylum → ... → tax_level) and paste them into a
-# single sort key, e.g. "Proteobacteria|Gammaproteobacteria|Pseudomonadales".
-# Sorting by this key groups sub-taxa of the same parent together at
-# every level of the hierarchy.
+# Hierarchical sort order
 # -----------------------------
 
 taxon_sort_df <- df %>%
   select(all_of(ancestor_ranks)) %>%
   distinct() %>%
-  # Replace NAs in ancestor columns with empty string so sort still works
-  mutate(across(all_of(ancestor_ranks), ~replace_na(as.character(.), ""))) %>%
-  mutate(
-    sort_key = do.call(paste, c(select(., all_of(ancestor_ranks)), sep = "|"))
-  ) %>%
+  mutate(across(all_of(ancestor_ranks), ~ replace_na(as.character(.), ""))) %>%
+  mutate(sort_key = do.call(paste, c(select(., all_of(ancestor_ranks)), sep = "|"))) %>%
   arrange(sort_key) %>%
   pull(.data[[tax_level]])
-
-# `taxon_sort_df` is now an ordered vector of unique taxon names,
-# grouped by shared ancestry.
 
 cat("Taxon order (hierarchical):\n")
 cat(paste(taxon_sort_df, collapse = "\n"), "\n\n")
@@ -109,17 +94,12 @@ copy_counts <- df %>%
   ) %>%
   summarise(copies = n(), .groups = "drop")
 
-cat("Copy counts rows:", nrow(copy_counts), "\n")
-
 # -----------------------------
 # Count genomes per taxon
 # -----------------------------
 
 genome_counts <- df %>%
-  distinct(
-    genome = .data[[genome_col]],
-    taxon  = .data[[tax_level]]
-  ) %>%
+  distinct(genome = .data[[genome_col]], taxon = .data[[tax_level]]) %>%
   count(taxon, name = "genomes")
 
 all_taxa <- unique(df[[tax_level]])
@@ -156,8 +136,7 @@ prop_df <- max_copy_df %>%
     } else {
       sum(
         copy_counts$copies[
-          copy_counts$taxon   == taxon &
-          copy_counts$protein == protein
+          copy_counts$taxon == taxon & copy_counts$protein == protein
         ] >= copy_level
       )
     },
@@ -167,29 +146,25 @@ prop_df <- max_copy_df %>%
   mutate(copy_level_plot = if_else(is.na(copy_level), 1, copy_level))
 
 # -----------------------------
-# Row labels — apply hierarchical order here
+# Row labels - apply hierarchical order
 # -----------------------------
 
 prop_df <- prop_df %>%
   left_join(genome_counts, by = "taxon", suffix = c("", ".y")) %>%
   mutate(
     genomes     = coalesce(genomes, genomes.y),
-    taxon_label = paste0(taxon, " (n=", genomes, ")")
+    taxon_label = paste0(taxon, " (", genomes, ")")
   ) %>%
   select(-ends_with(".y"))
 
-# Build ordered taxon_label vector that respects the hierarchical sort
 ordered_taxon_labels <- prop_df %>%
   distinct(taxon, taxon_label) %>%
   mutate(taxon = factor(taxon, levels = taxon_sort_df)) %>%
   arrange(taxon) %>%
   pull(taxon_label)
 
-# Apply factor with hierarchical level order (reversed so top taxon is at top of plot)
 prop_df <- prop_df %>%
-  mutate(
-    taxon_label = factor(taxon_label, levels = rev(ordered_taxon_labels))
-  )
+  mutate(taxon_label = factor(taxon_label, levels = rev(ordered_taxon_labels)))
 
 prop_df$protein <- factor(prop_df$protein, levels = protein_list)
 
@@ -225,7 +200,6 @@ n_proteins        <- length(protein_list)
 global_max_copies <- if (nrow(dot_df) > 0) max(dot_df$copy_level_plot) else 1
 
 if (nrow(dot_df) > 0) {
-
   max_copies_per_protein <- dot_df %>%
     group_by(protein) %>%
     summarise(n_levels = max(copy_level_plot), .groups = "drop")
@@ -237,15 +211,18 @@ if (nrow(dot_df) > 0) {
       x_offset = if_else(
         n_levels == 1,
         0,
-        (copy_level_plot - 1) * DOT_STEP - (n_levels - 1) * DOT_STEP / 2
+        (copy_level_plot - 1) * DOT_STEP - (n_levels - 1) * DOT_STEP / 3
       ),
       x_pos = protein_idx + x_offset
     )
-
 } else {
   dot_df <- dot_df %>%
-    mutate(n_levels = integer(0), protein_idx = integer(0),
-           x_offset = numeric(0), x_pos = numeric(0))
+    mutate(
+      n_levels    = integer(0),
+      protein_idx = integer(0),
+      x_offset    = numeric(0),
+      x_pos       = numeric(0)
+    )
 }
 
 text_df <- text_df %>%
@@ -258,45 +235,141 @@ dot_perfect  <- dot_df %>% filter(proportion == 1.0)
 dot_gradient <- dot_df %>% filter(proportion > 0 & proportion < 1.0)
 dot_empty    <- dot_df %>% filter(proportion == 0, copy_level_plot == 1)
 
-x_expand_add <- 0.5 + (global_max_copies - 1) * DOT_STEP / 2 + 0.5
+x_expand_add <- (global_max_copies - 1) * DOT_STEP / 3 + 0.2
 
 # -----------------------------
-# Plot
+# Alternating row bands for table feel
+# -----------------------------
+
+n_taxa     <- length(levels(prop_df$taxon_label))
+row_levels <- levels(prop_df$taxon_label)
+
+row_bands <- tibble(
+  taxon_label = factor(row_levels, levels = row_levels),
+  row_num     = seq_along(row_levels),
+  shade       = row_num %% 2 == 0
+) %>%
+  filter(shade)
+
+x_lo <- 0.5
+x_hi <- n_proteins + x_expand_add
+
+# -----------------------------
+# Constants
+# — PALETTE_HIGH matches proportion == 1.0 after direction = -1
+#   (viridis flipped: yellow=0, purple=1)
+# -----------------------------
+
+PALETTE_HIGH <- "#440154"   # viridis purple = top of flipped scale
+BAND_FILL    <- "#F2EFE9"
+EMPTY_COL    <- "#CCCCCC"
+HEADER_LINE  <- "#2A4858"
+TEXT_MAIN    <- "#1C2B33"
+TEXT_MUTED   <- "#7A8C96"
+
+# -----------------------------
+# Custom theme
+# -----------------------------
+
+theme_table <- function(base_size = 15) {
+  theme_minimal(base_size = base_size) %+replace%
+    theme(
+      plot.background  = element_rect(fill = "white", colour = NA),
+      panel.background = element_rect(fill = "white", colour = NA),
+
+      # ── No vertical grid lines ──
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.grid.major.y = element_blank(),
+      panel.grid.minor.y = element_blank(),
+
+      axis.title     = element_blank(),
+      axis.ticks     = element_blank(),
+      axis.text.x.top = element_text(
+        angle  = 0, hjust = 0.5, vjust = -0.5,
+        colour = TEXT_MAIN,
+        face   = "bold",
+        size   = base_size,
+        margin = margin(b = 4)
+      ),
+      axis.text.y = element_text(
+        hjust  = 1,
+        colour = TEXT_MAIN,
+        size   = base_size,
+        margin = margin(r = 6)
+      ),
+      legend.position    = "right",
+      legend.direction   = "vertical",
+      legend.title       = element_text(colour = TEXT_MAIN, face = "bold", size = base_size*0.82),
+      legend.text        = element_text(colour = TEXT_MUTED, size  = base_size*0.72),
+      legend.key.height  = unit(0.9, "lines"),
+      legend.key.width   = unit(0.55, "lines"),
+      legend.margin      = margin(l = 8),
+      plot.title = element_text(
+        colour = HEADER_LINE,
+        face   = "bold",
+        size   = base_size * 1.15,
+        margin = margin(b = 12)
+      ),
+      plot.subtitle = element_text(
+        colour = TEXT_MUTED,
+        size   = base_size * 0.85,
+        margin = margin(b = 10)
+      ),
+      plot.margin = margin(t = 8, r = 22, b = 14, l = 10, unit = "mm")
+    )
+}
+
+# -----------------------------
+# Build plot
 # -----------------------------
 
 p <- ggplot(prop_df, aes(y = taxon_label)) +
 
+  # Absent dots
   geom_point(
-    data  = dot_empty,
-    aes(x = x_pos),
-    shape = 21, size = 3, fill = NA, color = "grey70"
+    data   = dot_empty,
+    aes(x  = x_pos),
+    shape  = 21, size = 5,
+    fill   = NA, colour = EMPTY_COL,
+    stroke = 0.6
   ) +
 
+  # Gradient dots (0 < proportion < 1)
   geom_point(
-    data = dot_gradient,
-    aes(x = x_pos, color = proportion),
-    size = 3
+    data   = dot_gradient,
+    aes(x  = x_pos, fill = proportion),
+    shape  = 21, size = 5,
+    colour = "white", stroke = 0.25
   ) +
 
+  # Perfect dots (proportion == 1) — star shape
   geom_point(
     data   = dot_perfect,
     aes(x  = x_pos),
-    shape  = 21, fill = "#FF4D6D", color = "black",
-    size   = 3, stroke = 1.2
+    shape  = 24,          # 5-pointed star (open, native ggplot)
+    size   = 5,
+    colour = "white", 
+    fill = PALETTE_HIGH,
+    stroke = 1.0
   ) +
 
+  # Rare-protein count labels
   geom_text(
     data  = text_df,
     aes(x = x_pos, label = label),
-    size  = 3.5, color = "grey40"
+    size  = 3.2, colour = TEXT_MUTED,
+    fontface = "italic"
   ) +
 
-  scale_color_gradient(
-    name     = "Genome proportion",
-    low      = "#00C9A7",
-    high     = "#FF4D6D",
-    limits   = c(0, 1),
-    na.value = "grey80"
+  # ── Viridis fill scale, flipped ──
+  scale_fill_viridis_c(
+    name      = "Genome proportion",
+    option    = "cividis",
+    direction = -1,          # yellow = 0, purple = 1
+    limits    = c(0, 1),
+    na.value  = "grey80",
+    guide     = guide_colorbar(barheight = unit(5, "lines"))
   ) +
 
   scale_x_continuous(
@@ -306,26 +379,16 @@ p <- ggplot(prop_df, aes(y = taxon_label)) +
     expand   = expansion(add = x_expand_add)
   ) +
 
+  geom_hline(yintercept = n_taxa + 0.5, colour = HEADER_LINE, linewidth = 0.9) +
+  geom_hline(yintercept = 0.5,          colour = "#B0A898",   linewidth = 0.5) +
+
   coord_cartesian(clip = "off") +
 
-  theme_classic(base_size = 14) +
-
-  theme(
-    axis.title  = element_blank(),
-    axis.text.x = element_text(angle = 30, hjust = 0),
-    axis.text.y = element_text(hjust = 1),
-    axis.line.x = element_line(),
-    axis.line.y = element_line(),
-    plot.margin = margin(t = 10, r = 20, b = 15, l = 10, unit = "mm")
-  ) +
+  theme_table(base_size = 13) +
 
   labs(
-    title   = paste("Protein copy distribution across", tax_level),
-    caption = str_wrap(
-      "Outlined dot = 100% of genomes | Gradient = partial presence | Open circle = absent | Grey numbers = count (<5% of genomes)",
-      width = 80
-    )
-  )
+    title    = paste("Protein copy distribution across", tax_level),
+   )
 
 # -----------------------------
 # Save
@@ -333,7 +396,7 @@ p <- ggplot(prop_df, aes(y = taxon_label)) +
 
 dir.create(dirname(outfile), recursive = TRUE, showWarnings = FALSE)
 
-col_width   <- 1.5 + (global_max_copies - 1) * DOT_STEP
+col_width   <- 0.75 + (global_max_copies - 1) * DOT_STEP
 plot_width  <- max(8, 2.5 + col_width * n_proteins)
 plot_height <- max(4, 1.5 + 0.45 * length(unique(prop_df$taxon_label)))
 
