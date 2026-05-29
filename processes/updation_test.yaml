@@ -4,10 +4,11 @@ cores: 4
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
 run_id: example_run
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+base_dir: "/home/anirudh/asgard_pipeline"
 
 output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
 cds:
-  bakta_db: ""
+  bakta_db: "/home/anirudh/asgard_pipeline/database/software_dbs/bakta/db"
   existing: "/home/anirudh/asgard_pipeline/database/cds_genomes"
 organisms:
   - name: "promethearchaeati"
@@ -25,7 +26,7 @@ pipeline_stages:
   - filtered
   - derep
 gtdb:
-  db_path:      /home/anirudh/asgard_pipeline/database/software_dbs/gtdb
+  db_path:      /home/anirudh/asgard_pipeline/database/software_dbs/release232
   mash_db:      /path/to/gtdbtk_db/mash/gtdb.msh   # reused across runs
   extension:    fna
   prefix:       gtdbtk
@@ -35,3 +36,6 @@ gtdb:
   pplacer_cpus: 2
   scratch_dir:  /tmp
   extra_args:   ""
+interproscan:
+  phylum_filter: Asgardarchaeota
+  ips_path: /home/anirudh/interproscan/

@@ -29,4 +29,6 @@ dependencies:
   - r-scales
   - r-tibble
   - r-ggtext
+  - r-viridis
+  - r-ggrepel
 prefix: /root/miniconda3/envs/bio-r

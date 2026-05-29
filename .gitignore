@@ -1,6 +1,7 @@
 # ── Generated databases / outputs ───────────────────────
 
 database/
+interpro_temp/
 
 # ── Snakemake internals ─────────────────────────────────
 

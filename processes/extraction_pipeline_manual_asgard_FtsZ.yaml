@@ -1,9 +1,9 @@
-pipeline: phylogeny_pipeline
-run_id: ftsz_fin_v6
+pipeline: extraction_pipeline
+run_id: ftsz_extraction_run1
 base_dir: /home/anirudh/asgard_pipeline
 env_dir: /home/anirudh/asgard_pipeline/bin/envs
 log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
-reason: Finalize FtsZ tree
+reason: Finalize Presence Matrix
 cores: 24
 parse_ips: false
 remove_hypotheticals: false
@@ -56,13 +56,6 @@ phylogeny_threads: 12
 run_itol_upload: true
 itol_project: Asgard
 default_annotation: /home/anirudh/phylogeny/table2itol/ftsz_summary_feb12/iTOL_colorstrip-FtsZ_type.txt
-run:
-  id: ftsz_fin_v4
-  base_dir: /home/anirudh/asgard_pipeline
-  env_dir: /home/anirudh/asgard_pipeline/bin/envs
-  log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
-  cores: 24
-  reason: Finalize FtsZ tree
 inputs:
   database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet
   raw_database: /home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet

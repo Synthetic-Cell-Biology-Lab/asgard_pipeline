@@ -1,7 +1,19 @@
-
-
 wildcard_constraints:
-    org = "[^/]+"
+    org    = "[^/]+",
+    genome = "[^/]+"
+
+# =========================
+# Imports & config
+# =========================
+
+import yaml
+import os
+from pathlib import Path
+
+configfile: "config.yaml"
+
+CURRENT_DIR = config.get('base_dir', workflow.basedir)
+
 
 def _cfg_get(path, default=None):
     cur = config
@@ -25,46 +37,50 @@ def _cfg_sync(flat_key, nested_path, default=None):
         config[flat_key] = default
 
 
-_cfg_sync("run_id", ["run", "id"])
-_cfg_sync("base_dir", ["run", "base_dir"])
-_cfg_sync("env_dir", ["run", "env_dir"])
-_cfg_sync("log_dir", ["run", "log_dir"])
-_cfg_sync("pipeline_log", ["run", "pipeline_log"])
-_cfg_sync("cores", ["run", "cores"])
-_cfg_sync("database", ["inputs", "database"])
-_cfg_sync("raw_database", ["inputs", "raw_database"])
-_cfg_sync("genome_file", ["inputs", "genome_file"])
-_cfg_sync("protein_file", ["inputs", "protein_file"])
-_cfg_sync("fasta_file", ["inputs", "fasta_file"])
-_cfg_sync("parse_ips", ["modes", "parse_ips", "enabled"])
-_cfg_sync("hmmsearch", ["modes", "hmmsearch", "enabled"])
-_cfg_sync("from_manual", ["modes", "from_manual", "enabled"])
-_cfg_sync("from_database", ["modes", "from_database", "enabled"])
+_cfg_sync("run_id",               ["run", "id"])
+_cfg_sync("base_dir",             ["run", "base_dir"])
+_cfg_sync("env_dir",              ["run", "env_dir"])
+_cfg_sync("log_dir",              ["run", "log_dir"])
+_cfg_sync("pipeline_log",         ["run", "pipeline_log"])
+_cfg_sync("cores",                ["run", "cores"])
+_cfg_sync("database",             ["inputs", "database"])
+_cfg_sync("raw_database",         ["inputs", "raw_database"])
+_cfg_sync("genome_file",          ["inputs", "genome_file"])
+_cfg_sync("protein_file",         ["inputs", "protein_file"])
+_cfg_sync("fasta_file",           ["inputs", "fasta_file"])
+_cfg_sync("parse_ips",            ["modes", "parse_ips", "enabled"])
+_cfg_sync("hmmsearch",            ["modes", "hmmsearch", "enabled"])
+_cfg_sync("from_manual",          ["modes", "from_manual", "enabled"])
+_cfg_sync("from_database",        ["modes", "from_database", "enabled"])
 _cfg_sync("from_existing_folder", ["modes", "from_existing_folder", "enabled"])
-_cfg_sync("search_string", ["modes", "search", "search_string"])
-_cfg_sync("rstring", ["modes", "search", "rstring"])
-_cfg_sync("phylogeny_threads", ["phylogeny", "threads"])
-_cfg_sync("run_itol_upload", ["phylogeny", "run_itol_upload"])
-_cfg_sync("itol_project", ["phylogeny", "itol_project"])
-_cfg_sync("PLOT_Y_COLUMN", ["plot", "y_column"])
-_cfg_sync("PLOT_FILTER_COLUMN", ["plot", "filter_column"])
-_cfg_sync("PLOT_FILTER_VALS", ["plot", "filter_values"])
-_cfg_sync("PLOT_TAXON_LEVELS", ["plot", "taxon_levels"])
+_cfg_sync("search_string",        ["modes", "search", "search_string"])
+_cfg_sync("rstring",              ["modes", "search", "rstring"])
+_cfg_sync("phylogeny_threads",    ["phylogeny", "threads"])
+_cfg_sync("run_itol_upload",      ["phylogeny", "run_itol_upload"])
+_cfg_sync("itol_project",         ["phylogeny", "itol_project"])
+_cfg_sync("PLOT_Y_COLUMN",        ["plot", "y_column"])
+_cfg_sync("PLOT_FILTER_COLUMN",   ["plot", "filter_column"])
+_cfg_sync("PLOT_FILTER_VALS",     ["plot", "filter_values"])
+_cfg_sync("PLOT_TAXON_LEVELS",    ["plot", "taxon_levels"])
 _cfg_sync("PLOT_PROTEINS_PRESENCE", ["plot", "proteins_presence"])
-_cfg_sync("ymin", ["plot", "ymin"])
-_cfg_sync("ymax", ["plot", "ymax"])
-import yaml
-import os
+_cfg_sync("ymin",                 ["plot", "ymin"])
+_cfg_sync("ymax",                 ["plot", "ymax"])
 
-configfile: "config.yaml"
 
+# =========================
+# Top-level constants
+# =========================
 
 OUTDIR = config["output_dir"]
-
-ORGS = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
-
-
+ORGS   = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
 STAGES = config["pipeline_stages"]
+FINAL_STAGE = STAGES[-1]
+
+
+# =========================
+# Helper functions
+# (must be defined before any code that calls them)
+# =========================
 
 def stage_dir(org, stage):
     stage_map = {
@@ -74,6 +90,7 @@ def stage_dir(org, stage):
     }
     return stage_map[stage]
 
+
 def prev_stage_dir(org, stage):
     idx = STAGES.index(stage)
     if idx == 0:
@@ -81,18 +98,65 @@ def prev_stage_dir(org, stage):
     return stage_dir(org, STAGES[idx - 1])
 
 
-
 def get_org_param(wc, field, default=None):
-    org = next(o for o in config["organisms"]
-               if o["name"].replace(" ", "_").lower() == wc.org)
+    org = next(
+        o for o in config["organisms"]
+        if o["name"].replace(" ", "_").lower() == wc.org
+    )
     return org.get(field, default)
+
+
+# =========================
+# Bakta configuration
+# =========================
+
+BAKTA_EXISTING = config.get("cds", {}).get("existing")
+
+if BAKTA_EXISTING:
+    BAKTA_OUTDIR     = Path(BAKTA_EXISTING)
+    EXISTING_GENOMES = {p.name for p in BAKTA_OUTDIR.iterdir() if p.is_dir()}
+else:
+    BAKTA_OUTDIR     = Path(f"{OUTDIR}/bakta")
+    EXISTING_GENOMES = set()
+
+
+# =========================
+# Collect dereplicated genome files
+# (depends on stage_dir, so must come after it)
+# =========================
+
+GENOME_FILES = []
+for org in ORGS:
+    genome_dir = Path(
+        f"{stage_dir(org, FINAL_STAGE)}/Dereplicated_Representative_Genomes"
+    )
+    if genome_dir.exists():
+        GENOME_FILES.extend(genome_dir.glob("*.fna"))
+
+# Genome names without extension
+ALL_GENOMES = {genome.stem: genome for genome in GENOME_FILES}
+
+# Genomes that still need Bakta annotation
+GENOMES_TO_RUN = sorted([
+    genome for genome in ALL_GENOMES
+    if genome not in EXISTING_GENOMES
+])
+
+
+# =========================
+# Rules
+# =========================
 
 rule all:
     input:
-        expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS),
-        expand(f"{OUTDIR}/skder/{{org}}/dedup_done.flag", org=ORGS),
-        expand(f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag", org=ORGS),
-        expand(f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag", org=ORGS)
+        expand(f"{OUTDIR}/{{org}}/done.flag",                      org=ORGS),
+        expand(f"{OUTDIR}/skder/{{org}}/dedup_done.flag",          org=ORGS),
+        expand(f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag",      org=ORGS),
+        expand(f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",        org=ORGS),
+        expand(f"{OUTDIR}/gtdbtk/{{org}}_taxa_count.svg",          org=ORGS),
+        expand(f"{BAKTA_OUTDIR}/{{genome}}",                        genome=GENOMES_TO_RUN),
+        f"{OUTDIR}/interproscan/ips_done.flag"
+
 
 rule download_genomes:
     output:
@@ -115,6 +179,7 @@ rule download_genomes:
             --filename {output.zipfile}
         """
 
+
 rule extract_genomes:
     input:
         zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
@@ -134,6 +199,7 @@ rule extract_genomes:
 
         touch {output.flag}
         """
+
 
 rule checkm2:
     input:
@@ -157,19 +223,19 @@ rule checkm2:
             --extension fna \
             --threads {threads} \
             --force
-        
+
         touch {output.checkm2_flag}
         """
+
 
 rule move_filtered:
     input:
         quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
-        genomes_dir    = lambda wc: prev_stage_dir(wc.org, "filtered")
+        genomes_dir    = lambda wc: stage_dir(wc.org, "raw")   # FIX: was prev_stage_dir(wc.org, "filtered")
     output:
-        filtered_dir  = directory(stage_dir("{org}", "filtered")),
-        filtered_list = f"{stage_dir('{org}', 'filtered')}/passed_genomes.txt"
-    threads:
-        1
+        filtered_dir  = directory(f"{OUTDIR}/{{org}}/filtered"),
+        filtered_list = f"{OUTDIR}/{{org}}/filtered/passed_genomes.txt"
+    threads: 1
     params:
         cont         = config["checkm2"]["Contamination"],
         completeness = config["checkm2"]["Completeness"]
@@ -194,11 +260,11 @@ rule move_filtered:
 
 rule skder:
     input:
-        genomes_dir  = lambda wc: prev_stage_dir(wc.org, "derep"),
-        stage_list   = lambda wc: f"{prev_stage_dir(wc.org, 'derep')}/passed_genomes.txt"
+        genomes_dir = lambda wc: prev_stage_dir(wc.org, "derep"),
+        stage_list  = lambda wc: f"{prev_stage_dir(wc.org, 'derep')}/passed_genomes.txt"
     output:
-        derep_dir  = directory(stage_dir("{org}", "derep")),
-        derep_list = f"{stage_dir('{org}', 'derep')}/derep_genomes.txt",   
+        derep_dir  = directory(f"{OUTDIR}/skder/{{org}}"),
+        derep_list = f"{OUTDIR}/skder/{{org}}/derep_genomes.txt",
         flag       = f"{OUTDIR}/skder/{{org}}/dedup_done.flag"
     threads: 16
     params:
@@ -221,28 +287,12 @@ rule skder:
         touch {output.flag}
         """
 
-rule download_gtdbtk_db:
-    output:
-        db_dir = directory(config["gtdb"]["db_path"]),
-        flag   = f"{config['gtdb']['db_path']}/download_done.flag"
-    params:
-        version = config["gtdb"].get("db_version", "latest")
-    conda:
-        f"{config.get('env_dir')}/gtdbtk.yaml"
-    shell:
-        """
-        download-db.sh {output.db_dir}
-
-        touch {output.flag}
-        """
-
 
 rule gtdbtk:
     input:
-        genomes_dir = lambda wc: stage_dir(wc.org, STAGES[-1]),
+        genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/Dereplicated_Representative_Genomes",
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
-        db_dir      = ancient(config["gtdb"]["db_path"]),
-        db_flag     = ancient(f"{config['gtdb']['db_path']}/download_done.flag")
+        db_dir      = ancient(config["gtdb"]["db_path"])
     output:
         outdir = directory(f"{OUTDIR}/gtdbtk/{{org}}"),
         flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
@@ -277,61 +327,142 @@ rule gtdbtk:
 
         touch {output.flag}
         """
-# # rule bakta:
-# #     input:
-# #         genome = f"{OUTDIR}/{{org}}/{{org}}.fasta"
-# #     output:
-# #         outdir = directory(f"{OUTDIR}/{{org}}/bakta")
-# #     params:
-# #         prefix = "{org}",
-# #         bakta_db = config['bakta_db']
-# #     threads: 8
-# #     conda:
-# #         "envs/bakta.yaml"
-# #     shell:
-# #         """
-# #         bakta \
-# #             --db {params.bakta_db} \
-# #             --output {output.outdir} \
-# #             --prefix {params.prefix} \
-# #             --threads {threads} \
-# #             {input.genome}
-#         """
 
 
-# # rule collect_proteomes:
-# #     input:
-# #         expand(f"{OUTDIR}/{{org}}/done.flag", org=ORGS)
+rule split_taxonomy:
+    input:
+        f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk.ar53.summary.tsv"
+    output:
+        f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    run:
+        import pandas as pd
 
-# #     output:
-# #         faa = f"{OUTDIR}/combined/all_{{org}}_proteomes.faa",
-# #         csv = f"{OUTDIR}/combined/all_{{org}}_proteomes.csv",
+        df = pd.read_csv(input[0], sep="\t")
 
-# #     shell:
-# #         r"""
-# #         mkdir -p {OUTDIR}/combined
+        ranks = ["domain", "phylum", "class",
+                 "order", "family", "genus", "species"]
 
-# #         # Combine FASTA files
-# #         find {OUTDIR} -name "*.faa" -exec cat {{}} + > {output.faa}
+        tax_split = (
+            df["classification"]
+            .str.split(";", expand=True)
+            .iloc[:, :7]
+        )
+        tax_split.columns = ranks
 
-# #         # Create accession ↔ genome mapping CSV
-# #         echo "accession,genome_file,header" > {output.csv}
+        for col in ranks:
+            tax_split[col] = tax_split[col].str.replace(
+                r"^[dpcofgs]__", "", regex=True
+            )
 
-# #         find {OUTDIR} -name "*.faa" | while read faa; do
+        df = pd.concat([df, tax_split], axis=1)
+        df['genome_file'] = df['user_genome']
+        df.to_csv(output[0], index=False)
 
-# #             genome=$(basename "$(dirname "$faa")")
 
-# #             grep "^>" "$faa" | while read header; do
+rule taxa_counts:
+    input:
+        csv = f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+    output:
+        plot = f"{OUTDIR}/gtdbtk/{{org}}_taxa_count.svg"
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+    message:
+        """
+        ==========================================
+        📊      Taxonomic Sampling Plot
+        ==========================================
+        """
+    shell:
+        """
+        Rscript {CURRENT_DIR}/bin/units/plot_taxa_counts.r \
+            -i {input.csv} \
+            -o {output.plot}
+        """
 
-# #                 full_header="${{header#>}}"
-# #                 accession=$(echo "$full_header" | cut -d' ' -f1)
 
-# #                 # Escape quotes for CSV safety
-# #                 escaped_header=$(printf '%s\n' "$full_header" | sed 's/"/""/g')
+rule bakta:
+    input:
+        genome = lambda wc: str(ALL_GENOMES[wc.genome])
+    output:
+        outdir = directory(f"{BAKTA_OUTDIR}/{{genome}}")
+    params:
+        prefix   = "{genome}",
+        bakta_db = config.get("cds", {}).get("bakta_db", "")
+    threads: 4
+    conda:
+        f"{config['env_dir']}/bakta.yaml"
+    shell:
+        """
+        bakta \
+            --db {params.bakta_db} \
+            --output {output.outdir} \
+            --prefix {params.prefix} \
+            --threads {threads} \
+            {input.genome}
+        """
 
-# #                 echo "$accession,$genome,\"$escaped_header\""
 
-# #             done
+import pandas as pd
 
-# #         done >> {output.csv}
-# #         """
+def get_filtered_genomes():
+    genomes = []
+    for org in ORGS:
+        csv_path = f"{OUTDIR}/gtdbtk/{org}_gtdbtk_classification_split.ar53.csv"
+        if not os.path.exists(csv_path):
+            continue
+        df = pd.read_csv(csv_path)
+        phyla = config['interproscan']['phylum_filter']
+        if isinstance(phyla, str):
+            phyla = [phyla]
+        genomes.extend(df[df['phylum'].isin(phyla)]['user_genome'].tolist())
+    return genomes
+
+FILTERED_GENOMES = get_filtered_genomes()
+
+
+rule interproscan:
+    input:
+        faa = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}.faa"
+    output:
+        tsv = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_domains.tsv"
+    params:
+        base  = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_domains",
+        clean = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_clean.faa"
+    threads: 4
+    resources:
+        mem_mb = 15000
+    shell:
+        """
+        mkdir -p interpro_temp/{wildcards.genome} logs
+
+        sed '/^>/! s/\*//g' {input.faa} > {params.clean}
+
+        /home/anirudh/interproscan/interproscan.sh \
+            -i {params.clean} \
+            -f tsv,xml,gff3 \
+            -appl Pfam,Gene3D,SUPERFAMILY \
+            -dp -goterms -pa \
+            -cpu {threads} \
+            -T interpro_temp/{wildcards.genome} \
+            -b {params.base} \
+            > logs/{wildcards.genome}.log 2>&1
+
+        rm -f {params.clean}
+        """
+
+
+rule all_interproscan:
+    input:
+        lambda wc: expand(
+            f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_domains.tsv",
+            genome = FILTERED_GENOMES
+        )
+    output:
+        done_flag = f"{OUTDIR}/interproscan/ips_done.flag"
+    shell:
+        """
+        touch {output.done_flag}
+        
+        """

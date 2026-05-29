@@ -110,13 +110,13 @@ include: "../phylogeny_pipeline/rules/ssn_3.smk"
 # Final Target
 ########################################
 FINAL_TARGETS = [
-    f"{RESULT_DIR}/REVIEW_DONE.flag",
     f"{RESULT_DIR}/phylogeny_pipeline.log",
     f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
     expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else [],
     f"{SSN_DIR}/{PROTEIN}.clusters.csv",
     f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
-    f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
+    f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg",
+    f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile"
 ]
 
 
@@ -131,14 +131,6 @@ FINAL_TARGETS.extend(
 FINAL_TARGETS.extend(
     expand(
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg",
-        level=config.get("PLOT_TAXON_LEVELS")
-    )
-)
-
-
-FINAL_TARGETS.extend(
-    expand(
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.svg",
         level=config.get("PLOT_TAXON_LEVELS")
     )
 )
@@ -271,32 +263,3 @@ rule plot_taxa:
         --ymin {params.ymin} --ymax {params.ymax} \
         {params.dual_arg}
         """
-
-rule protein_copy_heatmap_reviewed:
-    input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
-
-    output:
-        f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.rev.svg"
-
-    params:
-        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
-
-    wildcard_constraints:
-        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
-    
-    conda: 
-        f"{config['env_dir']}/bio-r.yaml"
-
-    shell:
-        """
-        Rscript {CURRENT_DIR}/bin/units/bubble_heat_map_presence_table.r \
-        {input.csv} \
-        {wildcards.level} \
-        genome_file \
-        Manual_annotation \
-        {output} \
-        --proteins {params.proteins:q}
-        """
-
-

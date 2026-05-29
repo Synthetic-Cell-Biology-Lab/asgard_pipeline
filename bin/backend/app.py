@@ -126,13 +126,9 @@ def _annotate_dag(dag: dict, logs: list) -> dict:
             running.add(m.group(1))
 
         # Capture job id to rule mapping from execution lines.
-        # Examples:
-        # "jobid: 3"
-        # "rule align_sequences:"
         m_jobid = re.search(r'jobid:\s*(\d+)', line)
         if m_jobid:
             current_jobid = m_jobid.group(1)
-            # if same line contains rule
             m_rule_inline = re.search(rf'rule {rule_pattern}:', line)
             if m_rule_inline:
                 rule_name = m_rule_inline.group(1)
@@ -407,102 +403,65 @@ def _load_config(config_path: str) -> dict:
 @app.get("/runs/{run_id}/dag")
 def run_dag(run_id: str):
     run = RUNS.get(run_id)
-
     if not run:
         raise HTTPException(404, "Run not found")
 
     config_path = run.get("config_path")
-
     if not config_path:
         raise HTTPException(400, "No config path recorded for this run")
 
+    # FIX: removed the try/except nesting that buried the return inside
+    # an except block (making it unreachable). All error branches now
+    # raise immediately; the return sits at the top level of the function.
     try:
-        # ------------------------------------------------------------------
-        # Load config
-        # ------------------------------------------------------------------
-
         cfg = _load_config(config_path)
-
-        pipeline = cfg.get("pipeline")
-        protein  = cfg.get("protein_name")
-        run_name = cfg.get("run_id")
-
-        if not pipeline:
-            raise HTTPException(400, "Missing 'pipeline' in config")
-
-        if not protein:
-            raise HTTPException(400, "Missing 'protein' in config")
-
-        if not run_name:
-            raise HTTPException(400, "Missing 'run_id' in config")
-
-        # ------------------------------------------------------------------
-        # Resolve DAG path
-        # ------------------------------------------------------------------
-
-        result_dir = Path(
-            cfg.get(
-                "parent_dir",
-                BASE_DIR
-                / "database"
-                / "protein_sets"
-                / protein
-                / run_name
-            )
-        )
-
-        metadata_dir = result_dir / "metadata"
-
-        dag_dot = (
-            metadata_dir
-            / f"{pipeline}_{run_name}_dag.dot"
-        )
-
-        if not dag_dot.exists():
-            raise HTTPException(
-                404,
-                f"DAG file not found: {dag_dot}"
-            )
-
-        # ------------------------------------------------------------------
-        # Load and parse DAG
-        # ------------------------------------------------------------------
-
-        dot_text = dag_dot.read_text()
-
-        if not dot_text.strip():
-            raise HTTPException(
-                500,
-                f"DAG file is empty: {dag_dot}"
-            )
-
-        dag = _parse_dot(dot_text)
-
-        # ------------------------------------------------------------------
-        # Annotate DAG with runtime statuses
-        # ------------------------------------------------------------------
-
-        dag = _annotate_dag(
-            dag,
-            run.get("logs", [])
-        )
-
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, "DAG generation timed out")
-        return {
-            "run_id": run_id,
-            "pipeline": pipeline,
-            "protein": protein,
-            "dag_path": str(dag_dot),
-            "nodes": dag["nodes"],
-            "edges": dag["edges"],
-        }
-
-    except HTTPException:
-        raise
-
     except Exception as e:
-        raise HTTPException(
-            500,
-            f"Failed to load DAG: {str(e)}"
+        raise HTTPException(500, f"Failed to read config: {e}")
+
+    pipeline = cfg.get("pipeline")
+    protein  = cfg.get("protein_name")
+    run_name = cfg.get("run_id")
+
+    if not pipeline:
+        raise HTTPException(400, "Missing 'pipeline' in config")
+    if not protein:
+        raise HTTPException(400, "Missing 'protein_name' in config")
+    if not run_name:
+        raise HTTPException(400, "Missing 'run_id' in config")
+
+    result_dir = Path(
+        cfg.get(
+            "parent_dir",
+            BASE_DIR / "database" / "protein_sets" / protein / run_name,
         )
+    )
+    dag_dot = result_dir / "metadata" / f"{pipeline}_{run_name}_dag.dot"
+
+    if not dag_dot.exists():
+        raise HTTPException(404, f"DAG file not found: {dag_dot}")
+
+    try:
+        dot_text = dag_dot.read_text()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read DAG file: {e}")
+
+    if not dot_text.strip():
+        raise HTTPException(500, f"DAG file is empty: {dag_dot}")
+
+    try:
+        dag = _parse_dot(dot_text)
+        dag = _annotate_dag(dag, run.get("logs", []))
+    except Exception as e:
+        raise HTTPException(500, f"Failed to parse/annotate DAG: {e}")
+
+    # FIX: this return was previously unreachable (it was indented inside
+    # the except subprocess.TimeoutExpired block, after a raise).
+    return {
+        "run_id":   run_id,
+        "pipeline": pipeline,
+        "protein":  protein,
+        "dag_path": str(dag_dot),
+        "nodes":    dag["nodes"],
+        "edges":    dag["edges"],
+        "debug":    dag.get("debug", {}),
+    }
