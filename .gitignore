@@ -28,6 +28,10 @@ bin/frontend/node_modules/
 bin/frontend/dist/
 bin/frontend/.vite/
 
+
+# ── External Software ────────────────────────────────────────────
+bin/external_software/
+
 # ── IDE ─────────────────────────────────────────────────
 
 .vscode/
