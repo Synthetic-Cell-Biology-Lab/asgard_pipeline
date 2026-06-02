@@ -18,6 +18,7 @@ if not EXPLORATION_ID:
     raise ValueError("exploration_id is required.")
 
 BASE_DIR        = os.getcwd()
+CURRENT_DIR = config.get('base_dir', workflow.basedir)
 EXPLORATION_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{EXPLORATION_ID}/extraction_exploration"
 PARENT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{EXPLORATION_ID}"
 PHYLO_DIR       = f"{PARENT_DIR}/final_phylogeny"   # pre-existing, input only
@@ -36,6 +37,12 @@ elif config.get("from_fasta_csv", False):
 # Helpers
 ############################################################
 
+
+def get_align_fasta(wildcards):
+    if config.get("extend_phylogeny", {}).get("add_sequences", False):
+        return f"{PARENT_DIR}/{PROTEIN}.final.nr.fasta"
+    return f"{PARENT_DIR}/{PROTEIN}.final.fasta"
+
 def iqtree_optional_flags(p):
     flags = []
     if p.get("bootstrap") not in (None, "null", "None"):
@@ -53,23 +60,12 @@ def iqtree_optional_flags(p):
 # Rules
 ############################################################
 
-FINAL_TARGETS = [
-        f"{RESULT_DIR}/{PROTEIN}_phylo.treefile",
-        f"{RESULT_DIR}/phylogeny_pipeline.log"
-]
-
-if config['extend_phylogeny']['add_sequences']:
-    FINAL_TARGETS.append()
-
-
-
-
-
 
 rule all:
     input:
         f"{RESULT_DIR}/{PROTEIN}_phylo.treefile",
-        f"{RESULT_DIR}/phylogeny_pipeline.log"
+        f"{RESULT_DIR}/phylogeny_pipeline.log",
+        f"{RESULT_DIR}/{PROTEIN}_itol_uploaded.flag"
 
 
 rule assert_review_inputs:
@@ -90,10 +86,10 @@ rule assert_review_inputs:
 
 rule make_rev_csv:
     input:
-        rev_fasta = f"{RESULT_DIR}/{PROTEIN}.rev.fasta",
+        rev_fasta = f"{PARENT_DIR}/{PROTEIN}.rev.fasta",
         unr_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
     output:
-        rev_csv = f"{EXPLORATION_DIR}/{PROTEIN}.rev.csv"
+        rev_csv = f"{PARENT_DIR}/{PROTEIN}.rev.csv"
     
     conda:
         f"{config['env_dir']}/Reg.yaml"
@@ -130,64 +126,57 @@ rule make_rev_csv:
         print(f"Matched {len(filtered)} rows")
 
 
-
 rule add_fasta_sequences:
     input:
-        rev_fasta = f"{PARENT_DIR}/{PROTEIN}.rev.fasta",
-        fasta = config['extend_phylogeny']['additional_fasta']
+        rev_fasta         = f"{PARENT_DIR}/{PROTEIN}.rev.fasta",
+        additional_fastas = config.get('extend_phylogeny', {}).get('additional_fasta', [])
     output:
         full_fasta = f"{PARENT_DIR}/{PROTEIN}.final.fasta"
     conda:
-        f"{config['env_dir']}/Reg.yaml"       
-    run:
-        from Bio import SeqIO
-
-        input_fastas = [input.rev_fasta, input.fasta]
-        output_fasta = output.fasta
-
-        records = []
-        seen = set()
-
-        for fasta in input_fastas:
-            for i, record in enumerate(SeqIO.parse(fasta, "fasta"), start=1):
-
-                # Normalize header
-                clean_id = record.id.split()[0]
-
-                clean_id = (
-                    clean_id.replace("|", "_")
-                            .replace("/", "_")
-                            .replace(":", "_")
-                            .replace(" ", "_")
-                )
-
-                new_id = f"{clean_id}"
-
-                # Skip duplicate IDs
-                if new_id in seen:
-                    continue
-
-                seen.add(new_id)
-
-                record.id = new_id
-                record.name = new_id
-                record.description = ""
-
-                records.append(record)
-
-        SeqIO.write(records, output_fasta, "fasta")
-
-        print(f"Merged and normalized {len(records)} sequences")       
+        f"{config['env_dir']}/Reg.yaml"
+    script:
+        "/home/anirudh/asgard_pipeline/bin/units/add_fasta_sequences.py"
+        
 
 
 
 
+rule cdhit_100:
+    input:
+        fasta = f"{PARENT_DIR}/{PROTEIN}.final.fasta"
+    output:
+        fasta   = f"{PARENT_DIR}/{PROTEIN}.final.nr.fasta"
+    conda:
+        f"{config['env_dir']}/ssn.yaml"
+    threads: 8
+    shell:
+        """
+        cd-hit \
+            -i {input.fasta} \
+            -o {output.fasta} \
+            -c 1.0 \
+            -n 5 \
+            -M 16000 \
+            -T {threads} \
+            -d 0
+        """
 
+
+rule build_final_metadata_csv:
+    input:
+        fasta        = f"{PARENT_DIR}/{PROTEIN}.final.nr.fasta",
+        pipeline_csv = f"{PARENT_DIR}/{PROTEIN}.rev.csv"
+    output:
+        final_csv = f"{PARENT_DIR}/{PROTEIN}.final.csv"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    script:
+        "/home/anirudh/asgard_pipeline/bin/units/build_final_metadata_csv.py"
 
 rule align:
     input:
         ready = f"{RESULT_DIR}/PHYLOGENY_INPUTS_READY.flag",
-        fasta = f"{PARENT_DIR}/{PROTEIN}.rev.fasta"
+        fasta = get_align_fasta
     output:
         aln   = f"{RESULT_DIR}/{PROTEIN}.aln.fasta"
     threads:
@@ -304,12 +293,52 @@ rule run_phylogeny:
             -ntop  {params.p[ntop]}     \
             -nbest {params.p[nbest]}    \
             -nstop {params.p[nstop]}    \
-            -T     {threads}            \
+            -nt    {threads}            \
             {params.optional}           \
             --redo                      \
             {params.p[extra_args]}      \
         > {log} 2>&1
         """
+
+
+rule msa_to_itol:
+    input: 
+        msa     = f"{RESULT_DIR}/{PROTEIN}.aln.fasta"
+    output:
+        itol_msa = f"{RESULT_DIR}/itol_msa.txt"
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    shell:
+        """
+        python {CURRENT_DIR}/bin/units/msa_to_itol_dataset.py \
+            {input.msa} \
+            {output.itol_msa} \
+        """
+
+rule table2itol:
+    input:
+        annot = f"{PARENT_DIR}/{PROTEIN}.final.csv"
+    output:
+        annotation_dir = directory(f"{RESULT_DIR}/annotation"),    
+        done_annot = touch(f"{RESULT_DIR}/annotation.done.flag")
+    conda:
+        f"{config['env_dir']}/bio-r.yaml"
+    params:
+        LOCUS_TAG = config.get("LOCUS_TAG", "locus_tag")
+    shell:
+        """
+        mkdir -p {output.annotation_dir}
+
+        Rscript {CURRENT_DIR}/bin/units/table2itol.R \
+            -i {params.LOCUS_TAG} \
+            -l {params.LOCUS_TAG} \
+            -s "," \
+            -D {output.annotation_dir} \
+            {input.annot}
+        """
+
+
+
 
 
 rule upload_to_itol:
@@ -319,7 +348,7 @@ rule upload_to_itol:
         annot_files = lambda wildcards: sorted(
             glob.glob(f"{RESULT_DIR}/annotation/*.txt")
         ),
-        default     = lambda wildcards: config.get("default_annotation", []),
+        default     = lambda wildcards: config.get("default_annotation") or [] ,
         marker      = f"{RESULT_DIR}/annotation.done.flag",
         itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
         itol_msa    = f"{RESULT_DIR}/itol_msa.txt"

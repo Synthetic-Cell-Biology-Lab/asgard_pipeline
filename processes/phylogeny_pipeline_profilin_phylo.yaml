@@ -1,7 +1,7 @@
 pipeline: phylogeny_pipeline
 protein_name: profilin
 run_id: profilin_run3
-phyl_id: phyl_run3
+phyl_id: phyl_run5
 log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
 base_dir: /home/anirudh/asgard_pipeline
 env_dir: /home/anirudh/asgard_pipeline/bin/envs
@@ -12,10 +12,16 @@ from_manual: false
 from_fasta_csv: false
 
 extend_phylogeny:
+  base_path: /home/anirudh/asgard_pipeline/database/external_proteins/
   add_sequences: True
-  additional_fasta: #fasta file containing new sequnces
+  additional_fasta:
+  - "/home/anirudh/asgard_pipeline/database/external_proteins/profilin.fasta"
   uniprot_ncbi_annotation: True
 
+
+entrez:
+  email: anirudhbantwalbaliga@gmail.com
+  api_key: eed94abceca160fc601883bc7e508f604608
 
 alignment:
   method: famsa
