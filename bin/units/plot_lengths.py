@@ -17,13 +17,17 @@ split_dir = sys.argv[3]
 records = list(SeqIO.parse(fasta, "fasta"))
 
 lengths = [len(r.seq) for r in records]
-df = pd.DataFrame({
-    "Length": lengths,
-    "Record": records
-})
+df = pd.DataFrame({"Length": lengths, "Record": records})
 
-
-df["quantile_bin"] = pd.qcut(df["Length"], q=4, labels = ["short", "mid_short", "mid_long", "long"])
+if df["Length"].nunique() < 10:
+    print("Too few unique lengths for quartile binning; using equal-width bins")
+    df["quantile_bin"] = pd.cut(
+        df["Length"], bins=min(4, df["Length"].nunique()), labels=False
+    )
+else:
+    df["quantile_bin"] = pd.qcut(
+        df["Length"], q=4, labels=["short", "mid_short", "mid_long", "long"]
+    )
 
 os.makedirs(split_dir, exist_ok=True)
 
@@ -85,7 +89,7 @@ ax3.bar(bin_labels, bin_counts.values)
 ax3.set_title("Binned Counts")
 ax3.set_xlabel("Length Range")
 ax3.set_ylabel("Count")
-ax3.tick_params(axis='x', rotation=45)
+ax3.tick_params(axis="x", rotation=45)
 
 # -----------------------------
 # 4. Beeswarm (strip plot)
@@ -107,4 +111,6 @@ plt.savefig(output, bbox_inches="tight")
 plt.close()
 
 
-df[["Length", "quantile_bin"]].to_csv(os.path.join(split_dir, "length_bins.csv"), index=False)
+df[["Length", "quantile_bin"]].to_csv(
+    os.path.join(split_dir, "length_bins.csv"), index=False
+)

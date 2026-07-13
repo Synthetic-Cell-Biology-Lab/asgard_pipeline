@@ -1,4 +1,5 @@
 import re
+import os
 import time
 import json
 import pandas as pd
@@ -13,8 +14,8 @@ FASTA_FILE = snakemake.input.fasta
 PIPELINE_CSV = snakemake.input.pipeline_csv
 OUTPUT_CSV = snakemake.output.final_csv
 
-Entrez.email = snakemake.config["entrez"]["email"]
-Entrez.api_key = snakemake.config["entrez"]["api_key"]
+Entrez.email = os.environ["NCBI_EMAIL"]
+Entrez.api_key = os.environ["NCBI_API_KEY"]
 
 NCBI_BATCH_SIZE = 10
 TAX_BATCH_SIZE = 200

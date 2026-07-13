@@ -1,8 +1,17 @@
 import os
-
+envvars:
+    "ITOL_API_KEY"
 ########################################
 # Sequence Length Histogram
 ########################################
+
+def get_final_tree(wc):
+    if config.get("phylogeny", []).get("madroot", False):
+        return f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile"
+    else:
+        return f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile"
+
+
 
 rule length_histogram:
     input:
@@ -191,7 +200,7 @@ rule madroot:
 
 rule upload_to_itol:
     input:
-        tree        = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile",
+        tree        = get_final_tree,
         colorstrip  = f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt",
         annot_files = lambda wildcards: sorted(
             glob.glob(f"{PHYLO_DIR}/annotation/*.txt")
@@ -202,6 +211,7 @@ rule upload_to_itol:
         itol_msa = f"{PHYLO_DIR}/itol_msa.txt"
     output:
         tree_ids = f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag"
+
     params:
         project   = config.get("itol_project", "Asgard"),
         tree_name = f"fast_{config.get('run_id', 'run')}_{PROTEIN}",

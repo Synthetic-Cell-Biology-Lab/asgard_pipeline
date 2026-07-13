@@ -116,7 +116,7 @@ FINAL_TARGETS = [
     f"{SSN_DIR}/{PROTEIN}.clusters.csv",
     f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
     f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg",
-    f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile"
+
 ]
 
 
@@ -141,6 +141,20 @@ FINAL_TARGETS.extend(
         f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
     )
 )
+
+
+if config.get("phylogeny", []).get("madroot", False):
+    FINAL_TARGETS.append(f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile")
+else:
+    FINAL_TARGETS.append(f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile")
+
+
+if config.get("phylogeny", []).get("run_itol_upload", False):
+    FINAL_TARGETS.append(f"{EXPLORATION_DIR}/{PROTEIN}_fast_itol_uploaded.flag")
+else:
+    pass
+
+
 
 
 FINAL_TARGETS.extend(

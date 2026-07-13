@@ -1,0 +1,62 @@
+pipeline: phylogeny_pipeline
+protein_name: ftsz
+run_id: odin_ftsz2
+phyl_id: odin_ftsz2_cetz_mafft_run
+log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
+base_dir: /home/anirudh/asgard_pipeline
+env_dir: /home/anirudh/asgard_pipeline/bin/envs
+itol_project: Asgard
+reason: To get MSA of Odin FtsZ2 with CetZ of Archaea
+default_annotation: null
+from_manual: false
+from_fasta_csv: false
+extend_phylogeny:
+  base_path: /home/anirudh/asgard_pipeline/database/external_proteins/
+  add_sequences: True
+  additional_fasta:
+  - "/home/anirudh/asgard_pipeline/database/external_proteins/CetZ.fasta"
+  uniprot_ncbi_annotation: True
+
+
+
+alignment:
+  method: mafft
+  famsa:
+    threads: 8
+    extra_args: ''
+  mafft:
+    mode: --localpair
+    threads: 8
+    extra_args: '--maxiterate 1000'
+trimming:
+  method: clipkit
+  trimal:
+    mode: -automated1
+    extra_args: ''
+  bmge:
+    matrix: BLOSUM62
+    gap_rate: 0.5
+    entropy: 0.5
+    extra_args: ''
+  clipkit:
+    mode: smart-gap
+    extra_args: ''
+tree:
+  method: iqtree
+  iqtree:
+    model: MFP
+    seqtype: AA
+    bootstrap: 1000
+    bootstrap_method: -B
+    alrt: 1000
+    outgroup: null
+    seed: 12345
+    ninit: 100
+    ntop: 20
+    nbest: 5
+    nstop: 200
+    niter: null
+    max_iter: 1000
+    epsilon: 0.01
+    threads: 8
+    extra_args: ''
