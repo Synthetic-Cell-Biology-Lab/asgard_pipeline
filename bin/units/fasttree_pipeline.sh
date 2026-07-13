@@ -22,7 +22,6 @@ echo "=============================================="
 # 1️⃣ Alignment (MAFFT)
 ############################################
 
-echo "🧬 Running MAFFT..."
 
 echo "Running FAMSA2 alignment..."
 

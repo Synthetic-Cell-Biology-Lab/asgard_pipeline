@@ -4,6 +4,10 @@ import glob
 
 shell.executable("/bin/bash")
 
+envvars:
+    "NCBI_API_KEY",
+    "NCBI_EMAIL"
+
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
