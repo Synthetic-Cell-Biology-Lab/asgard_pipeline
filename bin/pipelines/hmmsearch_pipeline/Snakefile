@@ -72,6 +72,7 @@ EVALUE = config["params"]["evalue"]
 CPUS = config["params"]["cpus"]
 
 FINAL_CSV = f"{RESULT_DIR}/hits/final_hits_{RUN_ID}.csv"
+FILTERED_FINAL_CSV = f"{RESULT_DIR}/hits/fitered_hits_{RUN_ID}.csv"
 PFAM_IDS_FILE = f"{RESULT_DIR}/pfam_ids.txt"
 MAPPING_FILE = f"{RESULT_DIR}/pfam_mapping.tsv"
 
@@ -161,7 +162,8 @@ rule resolve_pfam_ids:
         if params.ids:
             print(f"Using direct HMM IDs: {params.ids}")
             for pid in params.ids:
-                final_ids.add(pid)
+                matches = [p for p in mapping.values() if pid.lower() in p.lower()]
+                final_ids.update(matches)
 
         # -------------------------
         # 2. Resolve search terms
@@ -198,6 +200,8 @@ rule extract_hmms:
         f"{config['env_dir']}/hmmer.yaml"
     shell:
         """
+        touch {output}
+
         mkdir -p {RESULT_DIR}/hmms
         > {output}
 
@@ -206,7 +210,6 @@ rule extract_hmms:
             hmmfetch {input[0]} $pfam >> {output} || echo "WARNING: $pfam failed"
         done < {input[2]}
 
-        touch {output}
         """
 
 # -------------------------------
@@ -261,9 +264,30 @@ rule parse_results:
         python bin/pipelines/hmmsearch_pipeline/scripts/domtblout_to_csv.py {input} {output}
         """
 
+rule filter_results:
+    input:
+        FINAL_CSV
+    output:
+        FILTERED_FINAL_CSV
+    params:
+        evalue=config.get("params", {}).get("evalue", 1e-3)
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
+    run:
+        import pandas as pd
+
+        indb = pd.read_csv(input[0])
+        indb['full_evalue'] = indb['full_evalue'].astype(float)
+        fildb = indb[indb["full_evalue"] <= float(params.evalue)]
+
+        fildb.to_csv(output[0], index=False)
+    
+
+
+
 rule extract_hit_sequences:
     input:
-        csv=FINAL_CSV,
+        csv=FILTERED_FINAL_CSV,
         fasta=DB
     output:
         f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta"
@@ -278,7 +302,7 @@ rule extract_hit_sequences:
 
 rule review_gate:
     input:
-        FINAL_CSV
+        FILTERED_FINAL_CSV
     output:
         f"{RESULT_DIR}/reviewed_accessions.tsv"
     message:

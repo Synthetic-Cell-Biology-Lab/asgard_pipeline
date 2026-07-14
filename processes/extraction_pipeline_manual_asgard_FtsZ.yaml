@@ -1,5 +1,5 @@
 pipeline: extraction_pipeline
-run_id: ftsz_extraction_run1
+run_id: sepf_with_dip_run2
 base_dir: /home/anirudh/asgard_pipeline
 env_dir: /home/anirudh/asgard_pipeline/bin/envs
 log_dir: /home/anirudh/asgard_pipeline/logs/pipeline_logs/
@@ -21,6 +21,9 @@ manual_annotation_filter:
 - CetZ2
 - Tubulin
 - SepF
+- DipA
+- DipB
+- DipC
 hmmsearch: false
 RUN_SSN: true
 protein_name: ftsz
@@ -38,6 +41,9 @@ PLOT_FILTER_VALS:
 - CetZ2
 - Tubulin
 - SepF
+- DipA
+- DipB
+- DipC
 PLOT_DUAL_PROTEINS:
 - FtsZ1
 - FtsZ2
@@ -52,6 +58,9 @@ PLOT_PROTEINS_PRESENCE:
 - CetZ
 - CetZ2
 - SepF
+- DipA
+- DipB
+- DipC
 phylogeny_threads: 12
 run_itol_upload: true
 itol_project: Asgard
@@ -72,29 +81,7 @@ modes:
   search:
     search_string: ftsz
     rstring: null
-plot:
-  y_column: protein_length
-  filter_column: Manual_annotation
-  filter_values:
-  - FtsZ1
-  - FtsZ2
-  - CetZ
-  - CetZ2
-  - Tubulin
-  - SepF
-  taxon_levels:
-  - phylum
-  - class
-  - order
-  proteins_presence:
-  - FtsZ1
-  - FtsZ2
-  - Tubulin
-  - CetZ
-  - CetZ2
-  - SepF
-  ymin: 0
-  ymax: 1000
+
 phylogeny:
   threads: 12
   run_itol_upload: true
