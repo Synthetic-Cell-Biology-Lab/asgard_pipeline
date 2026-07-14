@@ -10,9 +10,7 @@ INPUT_TABLE = "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered
 
 
 # dictionary: annotation_name -> file containing protein ids
-annotation_files = {
-    "DipA": "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/dipa.ids",
-}
+tags_to_remove = ["DipA"]
 
 # ============================================================
 # LOAD TABLE
@@ -26,21 +24,11 @@ if "Manual_annotation" not in df.columns:
     df["Manual_annotation"] = ""
 
 # ============================================================
-# APPLY ANNOTATIONS
+# REMOVE ANNOTATIONS
 # ============================================================
+for tag in tags_to_remove:
+    df["Manual_annotation"] = df["Manual_annotation"].replace(tag, None)
 
-for annotation, file in annotation_files.items():
-
-    with open(file) as f:
-        protein_ids = set(
-            line.strip().replace(" ", "_").upper() for line in f if line.strip()
-        )
-        df["locus_tag"] = df["locus_tag"].astype(str).str.strip().str.upper()
-
-    matches = df["locus_tag"].isin(protein_ids)
-    print(f"{annotation}: {matches.sum()} matches found")
-
-    df.loc[df["locus_tag"].isin(protein_ids), "Manual_annotation"] = annotation
 
 # ============================================================
 # EXPORT

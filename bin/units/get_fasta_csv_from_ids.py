@@ -4,11 +4,12 @@ from Bio import SeqIO
 import pandas as pd
 import sys
 import argparse
-
+from distutils.util import strtobool
 
 # -------------------------------
 # Input Handling
 # -------------------------------
+
 
 def get_args():
     """Handle both Snakemake and CLI usage."""
@@ -39,8 +40,9 @@ def get_args():
     parser.add_argument("--protein_name", required=True)
     parser.add_argument(
         "--remove_hypotheticals",
-        action="store_true",
-        help="Remove hypothetical proteins"
+        help="Remove hypothetical proteins",
+        type=lambda x: bool(strtobool(x)),
+        default=False,
     )
 
     args = parser.parse_args()

@@ -20,5 +20,8 @@
     },
     "peacock.remoteColor": "#832561",
     "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "[snakemake]": {
+        "editor.formatOnSave": false
+}
 }

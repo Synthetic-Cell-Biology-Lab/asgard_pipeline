@@ -273,7 +273,7 @@ if config.get("copy_to_windows", False):
 
         shell:
             r"""
-            set -euo pipefail
+            set -euxo pipefail
 
             mkdir -p "{params.outdir}"
 

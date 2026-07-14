@@ -1,6 +1,6 @@
 ---
 pipeline: extraction_pipeline
-run_id: dipa
+run_id: dipa_run5
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
@@ -8,14 +8,11 @@ reason: To obtain the phylogeny of 3dgel and select sequences to order
 cores: 24
 database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
 raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
-search_string: 
-rstring:
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
 manual_annotation_filter:
-- 3dgel
+- DipA
 
-hmmsearch: false
 RUN_SSN: false
 SSN_BITSCORES:
 - 50
@@ -25,22 +22,22 @@ SSN_BITSCORES:
 - 150
 - 170
 - 200
-protein_name: dip
+protein_name: DipA
 genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
 protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
 fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
 PLOT_Y_COLUMN: protein_length
 ymin: 0
-ymax: 1000
+ymax: 300
 PLOT_FILTER_COLUMN: Manual_annotation
 PLOT_FILTER_VALS: &1
-- 3dgel
+- DipA
 PLOT_TAXON_LEVELS: &2
 - phylum
 - class
 - order
 PLOT_PROTEINS_PRESENCE: &3
-- 3dgel
+- DipA
 phylogeny_threads: 12
 run_itol_upload: True
 itol_project: Asgard
@@ -57,13 +54,13 @@ inputs:
   fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
 modes:
   parse_ips:
-    enabled: true
+    enabled: false
   hmmsearch:
     enabled: false
   from_manual:
-    enabled: false
+    enabled: True
   search:
-    search_string: actin
+    search_string:
     rstring:
 plot:
   y_column: protein_length
@@ -72,7 +69,7 @@ plot:
   taxon_levels: *2
   proteins_presence: *3
   ymin: 0
-  ymax: 1500
+  ymax: 300
 phylogeny:
   threads: 12
   run_itol_upload: True

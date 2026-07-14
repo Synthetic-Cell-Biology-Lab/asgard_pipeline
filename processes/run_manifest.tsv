@@ -1,0 +1,2 @@
+timestamp	run_id	pipeline	protein	config	final_config	result_dir	cores	status	git_commit	reason
+2026-07-14T15:53:09+05:30	dip_synteny_run1	synteny_pipeline	dip	processes/synteny_pipeline_asgard_dip.yaml	/home/anirudh/asgard_pipeline/database/protein_sets/dip/dip_synteny_run1/metadata/config_used.yaml	/home/anirudh/asgard_pipeline/database/protein_sets/dip/dip_synteny_run1	24	FAILED	To study the gene neighborhood of dip family proteins

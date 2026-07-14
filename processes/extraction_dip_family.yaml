@@ -1,6 +1,6 @@
 ---
 pipeline: extraction_pipeline
-run_id: dipa
+run_id: dipa_run4
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
@@ -10,12 +10,14 @@ database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85c
 raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
 search_string: 
 rstring:
+acc_groups:
+  - PF01926
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
 manual_annotation_filter:
-- 3dgel
+- dipa
 
-hmmsearch: false
+hmmsearch: true
 RUN_SSN: false
 SSN_BITSCORES:
 - 50
@@ -25,26 +27,26 @@ SSN_BITSCORES:
 - 150
 - 170
 - 200
-protein_name: dip
+protein_name: dipa
 genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
 protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
 fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
 PLOT_Y_COLUMN: protein_length
 ymin: 0
-ymax: 1000
+ymax: 20000
 PLOT_FILTER_COLUMN: Manual_annotation
 PLOT_FILTER_VALS: &1
-- 3dgel
+- dipa
 PLOT_TAXON_LEVELS: &2
 - phylum
 - class
 - order
 PLOT_PROTEINS_PRESENCE: &3
-- 3dgel
+- dipa
 phylogeny_threads: 12
 run_itol_upload: True
 itol_project: Asgard
-copy_to_windows: false
+copy_to_windows: True
 windows_path: "/mnt/e/ssn_outputs"
 
 
@@ -57,13 +59,13 @@ inputs:
   fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
 modes:
   parse_ips:
-    enabled: true
-  hmmsearch:
     enabled: false
+  hmmsearch:
+    enabled: true
   from_manual:
     enabled: false
   search:
-    search_string: actin
+    search_string:
     rstring:
 plot:
   y_column: protein_length

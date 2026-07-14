@@ -10,6 +10,7 @@ CONFIG_FILE=${1:-}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
+MANIFEST="$BASE_DIR/processes/run_manifest.tsv"
 
 cd "$BASE_DIR"
 
@@ -115,6 +116,15 @@ DAG_DOT="${META_DIR}/${PIPELINE}_${RUN_ID}_dag.dot"
 DAG_SVG="${META_DIR}/${PIPELINE}_${RUN_ID}_dag.svg"
 
 # -------------------------------
+# Manifest
+# -------------------------------
+
+if [ ! -f "$MANIFEST" ]; then
+    printf "timestamp\trun_id\tpipeline\tprotein\tconfig\tfinal_config\tresult_dir\tcores\tstatus\tgit_commit\treason\n" > "$MANIFEST"
+fi
+
+
+# -------------------------------
 # Preserve config
 # -------------------------------
 
@@ -185,20 +195,49 @@ echo "   SVG: $DAG_SVG"
 # Run Snakemake
 # -------------------------------
 
-snakemake \
-  --snakefile "$SNAKEFILE" \
-  --configfile "$CONFIG_FILE" \
-  --config pipeline_log="$LOG_FILE" \
-  --use-conda \
-  --rerun-incomplete \
-  --cores "$CORES" \
-  --printshellcmds \
-  --conda-frontend conda \
-  2>&1 | grep -vE "Waiting for running|Resources (before|after)|Ready jobs|Selected jobs" | tee -a "$LOG_FILE"
+STATUS="SUCCESS"
+
+if ! snakemake \
+    --snakefile "$SNAKEFILE" \
+    --configfile "$CONFIG_FILE" \
+    --config pipeline_log="$LOG_FILE" \
+    --use-conda \
+    --rerun-incomplete \
+    --cores "$CORES" \
+    --printshellcmds \
+    --conda-frontend conda \
+    2>&1 | grep -vE "Waiting for running|Resources (before|after)|Ready jobs|Selected jobs" | tee -a "$LOG_FILE"
+then
+    STATUS="FAILED"
+fi
+
+# -------------------------------
+# update manifest
+# -------------------------------
+
+printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+    "$(date --iso-8601=seconds)" \
+    "$RUN_ID" \
+    "$PIPELINE" \
+    "$PROTEIN" \
+    "$CONFIG_FILE" \
+    "${META_DIR}/config_used.yaml" \
+    "$RESULT_DIR" \
+    "$CORES" \
+    "$STATUS" \
+    "$RUN_REASON" \
+>> "$MANIFEST"
+
+if [ "$STATUS" = "FAILED" ]; then
+    exit 1
+fi
+
+
 
 # -------------------------------
 # Footer
 # -------------------------------
+
 
 {
 echo ""
