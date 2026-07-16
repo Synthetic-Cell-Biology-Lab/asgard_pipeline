@@ -1,18 +1,23 @@
 pipeline: updation
-reason: "test run"
-cores: 4
+reason: "test run 4"
+cores: 16
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
 run_id: example_run
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 base_dir: "/home/anirudh/asgard_pipeline"
 
 output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
+out_fasta: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/fasta/v2_cp85_con10"
+out_genome_csv_unfiltered: "/home/anirudh/asgard_pipeline/database/collated/version2/genome_file/v2_unfitered"
+out_genome_csv: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/genome_file/v2_cp85_con10_gf"
+out_protein_csv: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/protein_file/v2_cp85_con10_pf"
 cds:
   bakta_db: "/home/anirudh/asgard_pipeline/database/software_dbs/bakta/db"
   existing: "/home/anirudh/asgard_pipeline/database/cds_genomes"
 organisms:
   - name: "promethearchaeati"
-    assembly_level: all
+    class: Asgardarchaeota
+    assembly_level: 
     refseq_only: false
 deduplication:
   ani: 99.0
@@ -20,7 +25,7 @@ deduplication:
 checkm2:
   db_path: /home/anirudh/asgard_pipeline/database/software_dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd
   Contamination: 10
-  Completeness: 15
+  Completeness: 85
 pipeline_stages:
   - raw
   - filtered

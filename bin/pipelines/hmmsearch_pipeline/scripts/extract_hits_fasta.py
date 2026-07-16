@@ -16,16 +16,27 @@ elif "target_name" in df.columns:
 else:
     raise ValueError(f"No valid ID column found. Columns: {list(df.columns)}")
 
+if "description" in df.columns:
+    desc_col = "description"
+else:
+    raise ValueError(f"No valid desc column found. Columns {list(df.columns)}")
 hit_ids = set(df[id_col])
+
+
+desc_map = df.set_index(id_col)[desc_col].to_dict()
 
 print(f"[INFO] Using column: {id_col}")
 print(f"[INFO] Unique hit IDs: {len(hit_ids)}")
 
 # ---- FASTA filtering ----
 records = []
+
 for record in SeqIO.parse(input_fasta, "fasta"):
-    record_id = record.id.split()[0]  # safer
+    record_id = record.id.split()[0]
+
     if record_id in hit_ids:
+        # Keep the ID and append the description
+        record.description = f"{record.id} {desc_map.get(record_id, '')}"
         records.append(record)
 
 SeqIO.write(records, output_fasta, "fasta")

@@ -1,5 +1,12 @@
+import re
+
+OUTDIR = config["output_dir"]
+ORGS   = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
+STAGES = config["pipeline_stages"]
+FINAL_STAGE = STAGES[-1]
+
 wildcard_constraints:
-    org    = "[^/]+",
+    org    = "|".join(re.escape(o) for o in ORGS),
     genome = "[^/]+"
 
 # =========================
@@ -9,6 +16,7 @@ wildcard_constraints:
 import yaml
 import os
 from pathlib import Path
+import pandas as pd
 
 configfile: "config.yaml"
 
@@ -119,30 +127,6 @@ else:
     BAKTA_OUTDIR     = Path(f"{OUTDIR}/bakta")
     EXISTING_GENOMES = set()
 
-
-# =========================
-# Collect dereplicated genome files
-# (depends on stage_dir, so must come after it)
-# =========================
-
-GENOME_FILES = []
-for org in ORGS:
-    genome_dir = Path(
-        f"{stage_dir(org, FINAL_STAGE)}/Dereplicated_Representative_Genomes"
-    )
-    if genome_dir.exists():
-        GENOME_FILES.extend(genome_dir.glob("*.fna"))
-
-# Genome names without extension
-ALL_GENOMES = {genome.stem: genome for genome in GENOME_FILES}
-
-# Genomes that still need Bakta annotation
-GENOMES_TO_RUN = sorted([
-    genome for genome in ALL_GENOMES
-    if genome not in EXISTING_GENOMES
-])
-
-
 # =========================
 # Rules
 # =========================
@@ -154,29 +138,97 @@ rule all:
         expand(f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag",      org=ORGS),
         expand(f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",        org=ORGS),
         expand(f"{OUTDIR}/gtdbtk/{{org}}_taxa_count.svg",          org=ORGS),
-        expand(f"{BAKTA_OUTDIR}/{{genome}}",                        genome=GENOMES_TO_RUN),
-        f"{OUTDIR}/interproscan/ips_done.flag"
+        expand(f"{OUTDIR}/interproscan/{{org}}/ips_done.flag", org=ORGS),
+        expand(f"{config["out_fasta"]}_{{org}}.faa" ,org = ORGS),
+        expand(f"{config['out_genome_csv']}_{{org}}.csv", org = ORGS),
+        expand(f"{config['out_protein_csv']}_{{org}}.csv", org = ORGS)
 
 
-rule download_genomes:
+rule check_database:
+    input:
+        input_path = f"{BAKTA_OUTDIR}/{{org}}/"
     output:
-        zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
-    params:
-        name   = lambda wc: get_org_param(wc, "name"),
-        level  = lambda wc: " ".join(
-            f"--assembly-level {l}"
-            for l in (get_org_param(wc, "assembly_level") or [])
-        ),
-        refseq = lambda wc: "--reference" if get_org_param(wc, "refseq_only") else ""
+        genomes_present = f"{OUTDIR}/{{org}}/present_list.txt"
     conda:
         f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
-        datasets download genome taxon "{params.name}" \
+        find {input.input_path} -maxdepth 1 -mindepth 1 -type d -printf '%f\n' > {output}
+        
+        """
+
+
+rule get_summary:
+    output:
+        summary=f"{OUTDIR}/{{org}}/genomes_summary.tsv"
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    params:
+        name=lambda wc: get_org_param(wc, "name"),
+        level=lambda wc: " ".join(
+            f"--assembly-level {l}"
+            for l in (get_org_param(wc, "assembly_level") or [])
+        ),
+        refseq=lambda wc: "--reference" if get_org_param(wc, "refseq_only") else ""
+    shell:
+        r"""
+        TAXID=$(
+            datasets summary taxonomy taxon "{params.name}" \
+                --as-json-lines \
+            | dataformat tsv taxonomy --template tax-summary \
+            | awk 'NR==2 {{print $2}}'
+        )
+
+        datasets summary genome taxon "$TAXID" \
             {params.level} \
             {params.refseq} \
+            --as-json-lines \
+        | dataformat tsv genome \
+        > {output.summary}
+        """
+
+rule prepare_download_list:
+    input:
+        summary=f"{OUTDIR}/{{org}}/genomes_summary.tsv",
+        genomes_present = f"{OUTDIR}/{{org}}/present_list.txt"
+    output:
+        accession_list = f"{OUTDIR}/{{org}}/accession_list_to_download.txt"
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    run:
+        import pandas as pd
+
+        summary_df = pd.read_csv(input.summary, sep="\t")
+        with open(input.genomes_present) as f:
+            present_list = [
+                "_".join(line.strip().split("_")[:2])
+                for line in f
+                if line.strip()
+            ]
+
+        to_be_downloaded = set(summary_df['Assembly Accession'].tolist()) - set(present_list)
+
+        with open(output.accession_list, 'w') as out:
+            out.write("\n".join(list(to_be_downloaded)))
+        
+
+
+
+
+rule download_genomes:
+    input:
+        accession_list = f"{OUTDIR}/{{org}}/accession_list_to_download.txt"
+    output:
+        zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
+    shell:
+        """
+        datasets download genome accession \
+            --inputfile {input.accession_list} \
             --include genome \
-            --filename {output.zipfile}
+            --filename {output.zipfile} \
+            --dehydrated
         """
 
 
@@ -186,12 +238,16 @@ rule extract_genomes:
     output:
         flag    = f"{OUTDIR}/{{org}}/done.flag",
         genomes = directory(f"{OUTDIR}/{{org}}/genomes")
+    conda:
+        f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
         mkdir -p {output.genomes}
 
         unzip -o {input.zipfile} \
             -d {OUTDIR}/{wildcards.org}/
+        
+        datasets rehydrate --directory  {OUTDIR}/{wildcards.org}/
 
         find {OUTDIR}/{wildcards.org}/ncbi_dataset/data/ \
             -name "*.fna" \
@@ -228,7 +284,7 @@ rule checkm2:
         """
 
 
-rule move_filtered:
+rule link_filtered:
     input:
         quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
         genomes_dir    = lambda wc: stage_dir(wc.org, "raw")   # FIX: was prev_stage_dir(wc.org, "filtered")
@@ -253,7 +309,7 @@ rule move_filtered:
         > {output.filtered_list}
 
         while read genome; do
-            cp {input.genomes_dir}/${{genome}}.fna {output.filtered_dir}/
+            ln -s {input.genomes_dir}/${{genome}}.fna {output.filtered_dir}/
         done < {output.filtered_list}
         """
 
@@ -265,7 +321,7 @@ rule skder:
     output:
         derep_dir  = directory(f"{OUTDIR}/skder/{{org}}"),
         derep_list = f"{OUTDIR}/skder/{{org}}/derep_genomes.txt",
-        flag       = f"{OUTDIR}/skder/{{org}}/dedup_done.flag"
+        flag       = f"{OUTDIR}/skder/{{org}}/dedup_done.flag",
     threads: 16
     params:
         ani    = config['deduplication']['ani'],
@@ -290,7 +346,7 @@ rule skder:
 
 rule gtdbtk:
     input:
-        genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/Dereplicated_Representative_Genomes",
+        genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}",
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
         db_dir      = ancient(config["gtdb"]["db_path"])
     output:
@@ -314,7 +370,7 @@ rule gtdbtk:
         export GTDBTK_DATA_PATH={params.db}
 
         gtdbtk classify_wf \
-            --genome_dir   {input.genomes_dir}      \
+            --genome_dir   {input.genomes_dir}/Dereplicated_Representative_Genomes      \
             --out_dir      {output.outdir}           \
             --extension    {params.extension}        \
             --prefix       {params.prefix}           \
@@ -329,17 +385,22 @@ rule gtdbtk:
         """
 
 
-rule split_taxonomy:
+
+
+checkpoint split_taxonomy:
     input:
-        f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk.ar53.summary.tsv"
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
+
     output:
         f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
     conda:
         f"{config.get('env_dir')}/Reg.yaml"
+    params:
+        tsv_file = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk.ar53.summary.tsv"
     run:
         import pandas as pd
 
-        df = pd.read_csv(input[0], sep="\t")
+        df = pd.read_csv(params.tsv_file, sep="\t")
 
         ranks = ["domain", "phylum", "class",
                  "order", "family", "genus", "species"]
@@ -382,12 +443,43 @@ rule taxa_counts:
         """
 
 
+
+def _get_filtered_genome_list(org):
+    csv_path = checkpoints.split_taxonomy.get(org=org).output[0]
+    df = pd.read_csv(csv_path)
+    phyla = config['interproscan']['phylum_filter']
+    if isinstance(phyla, str):
+        phyla = [phyla]
+    return df[df['phylum'].isin(phyla)]['user_genome'].tolist()
+
+
+def filtered_genomes_for_org(wildcards):
+    genomes = _get_filtered_genome_list(wildcards.org)
+    return expand(f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
+                  org=wildcards.org, genome=genomes)
+
+def filtered_faa_for_org(wildcards):
+    genomes = _get_filtered_genome_list(wildcards.org)
+    return expand(f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+                  org=wildcards.org, genome=genomes)
+
+def filtered_tsv_for_org(wildcards):
+    genomes = _get_filtered_genome_list(wildcards.org)
+    return expand(f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv",
+                  org=wildcards.org, genome=genomes)
+
+
+
+
 rule bakta:
     input:
-        genome = lambda wc: str(ALL_GENOMES[wc.genome])
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
+        genome =  f"{OUTDIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
     output:
-        outdir = directory(f"{BAKTA_OUTDIR}/{{genome}}")
+        fasta = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+        tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
     params:
+        outdir = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}",
         prefix   = "{genome}",
         bakta_db = config.get("cds", {}).get("bakta_db", "")
     threads: 4
@@ -395,44 +487,32 @@ rule bakta:
         f"{config['env_dir']}/bakta.yaml"
     shell:
         """
+        mkdir -p {params.outdir}
+
         bakta \
             --db {params.bakta_db} \
-            --output {output.outdir} \
+            --output {params.outdir} \
             --prefix {params.prefix} \
             --threads {threads} \
+            --force \
             {input.genome}
         """
 
 
-import pandas as pd
-
-def get_filtered_genomes():
-    genomes = []
-    for org in ORGS:
-        csv_path = f"{OUTDIR}/gtdbtk/{org}_gtdbtk_classification_split.ar53.csv"
-        if not os.path.exists(csv_path):
-            continue
-        df = pd.read_csv(csv_path)
-        phyla = config['interproscan']['phylum_filter']
-        if isinstance(phyla, str):
-            phyla = [phyla]
-        genomes.extend(df[df['phylum'].isin(phyla)]['user_genome'].tolist())
-    return genomes
-
-FILTERED_GENOMES = get_filtered_genomes()
 
 
 rule interproscan:
     input:
-        faa = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}.faa"
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
+        faa = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
     output:
-        tsv = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_domains.tsv"
+        tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
     params:
-        base  = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_domains",
-        clean = f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_clean.faa"
-    threads: 4
+        base  = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains",
+        clean = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_clean.faa"
+    threads: 16
     resources:
-        mem_mb = 15000
+        mem_mb = 30000
     shell:
         """
         mkdir -p interpro_temp/{wildcards.genome} logs
@@ -455,14 +535,201 @@ rule interproscan:
 
 rule all_interproscan:
     input:
-        lambda wc: expand(
-            f"{BAKTA_OUTDIR}/{{genome}}/{{genome}}_domains.tsv",
-            genome = FILTERED_GENOMES
-        )
+        genomes = filtered_genomes_for_org,
+        flag    = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
     output:
-        done_flag = f"{OUTDIR}/interproscan/ips_done.flag"
+        done_flag = f"{OUTDIR}/interproscan/{{org}}/ips_done.flag"
+    shell:
+        "touch {output.done_flag}"
+
+
+
+
+rule collate_proteins:
+    input:
+        filtered_faa_for_org
+    output:
+        out_fasta=f"{config["out_fasta"]}_{{org}}.faa"
     shell:
         """
-        touch {output.done_flag}
-        
+        cat {input} > {output.out_fasta}
         """
+
+
+
+rule make_genome_csv:
+    input:
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
+        checkm2=lambda wc: expand(
+            f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
+            org=ORGS
+        ),
+        taxonomy=lambda wc: expand(
+            f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv",
+            org=ORGS
+        )
+    output:
+        filtered=f"{config["out_genome_csv"]}_{{org}}.csv",
+        unfiltered=f"{config["out_genome_csv_unfiltered"]}_{{org}}.csv"
+    params:
+        completeness=config["checkm2"]["Completeness"],
+        contamination=config["checkm2"]["Contamination"]
+    run:
+        import pandas as pd
+
+        checkm2 = pd.concat(
+            [pd.read_csv(f, sep="\t") for f in input.checkm2],
+            ignore_index=True
+        )
+
+        taxonomy = pd.concat(
+            [pd.read_csv(f) for f in input.taxonomy],
+            ignore_index=True
+        )
+
+        df = checkm2.merge(
+            taxonomy[
+                [
+                    "genome_file",
+                    "domain",
+                    "phylum",
+                    "class",
+                    "order",
+                    "family",
+                    "genus",
+                    "species",
+                ]
+            ],
+            left_on="Name",
+            right_on="genome_file",
+            how="left",
+        )
+
+        out = pd.DataFrame({
+            "Organism Name": "",
+            "Organism Infraspecific Names Strain": "",
+            "Organism Infraspecific Names Isolate": "",
+            "Annotation Name": "",
+            "Assembly Level": "",
+            "Assembly Release Date": "",
+            "WGS project accession": "",
+            "Assembly Stats Number of Scaffolds": "",
+            "genome_file": df["genome_file"],
+            "Completeness": df["Completeness"],
+            "Contamination": df["Contamination"],
+            "Completeness_Model_Used": df["Completeness_Model_Used"],
+            "Translation_Table_Used": df["Translation_Table_Used"],
+            "Coding_Density": df["Coding_Density"],
+            "Contig_N50": df["Contig_N50"],
+            "Average_Gene_Length": df["Average_Gene_Length"],
+            "Genome_Size": df["Genome_Size"],
+            "GC_Content": df["GC_Content"],
+            "Total_Coding_Sequences": df["Total_Coding_Sequences"],
+            "Total_Contigs": df["Total_Contigs"],
+            "Max_Contig_Length": df["Max_Contig_Length"],
+            "batch_date": "",
+            "Isolate": "",
+            "WGS Project Accession": "",
+            "domain": df["domain"],
+            "phylum": df["phylum"],
+            "class": df["class"],
+            "order": df["order"],
+            "family": df["family"],
+            "genus": df["genus"],
+            "species": df["species"],
+        })
+
+        # Write unfiltered table
+        out.to_csv(output.unfiltered, index=False)
+
+        # Apply CheckM2 thresholds
+        filtered = out[
+            (out["Completeness"] >= params.completeness)
+            & (out["Contamination"] <= params.contamination)
+        ]
+
+        filtered.to_csv(output.filtered, index=False)
+
+
+rule make_protein_csv:
+    input:
+        genomes = filtered_tsv_for_org,
+        done_flag = f"{OUTDIR}/interproscan/{{org}}/ips_done.flag"
+    output:
+        f"{config["out_protein_csv"]}_{{org}}.csv"
+    run:
+        import pandas as pd
+
+        dfs = []
+
+        for file in input.genomes:
+            genome = Path(file).stem
+
+            with open(file) as f:
+                text = next(f)
+
+            
+            if "bakta" in text:
+                df = pd.read_csv(file, sep="\t", skiprows=5)
+                with open("test", 'a') as f:
+                    f.write("1"+"\n")
+            else:
+                df = pd.read_csv(file, sep = "\t")
+                with open("test", 'a') as f:
+                    f.write("2"+"\n")
+
+            # -------------------------
+            # Bakta
+            # -------------------------
+            if "Locus Tag" in df.columns:
+                df = df.rename(columns={
+                    "Locus Tag": "locus_tag",
+                    "Type": "ftype",
+                    "Gene": "gene",
+                    "Product": "product",
+                })
+
+                df["length_bp"] = (df["Stop"] - df["Start"] + 1).abs()
+
+                if "Length AA" in df.columns:
+                    df["protein_length"] = df["Length AA"]
+                elif "Length (aa)" in df.columns:
+                    df["protein_length"] = df["Length (aa)"]
+                else:
+                    df["protein_length"] = ""
+
+                df["EC_number"] = ""
+                df["COG"] = ""
+
+            # -------------------------
+            # Prokka
+            # -------------------------
+            elif "locus_tag" in df.columns:
+                if "protein_length" not in df.columns:
+                    df["protein_length"] = ""
+
+            else:
+                raise ValueError(
+                    f"Could not determine annotation format for {file}.\n"
+                    f"Columns: {list(df.columns)}"
+                )
+
+            out = pd.DataFrame({
+                "locus_tag": df["locus_tag"],
+                "genome_file": genome,
+                "protein_length": df["protein_length"],
+                "protein_header": "",
+                "ftype": df["ftype"],
+                "length_bp": df["length_bp"],
+                "gene": df["gene"],
+                "EC_number": df["EC_number"],
+                "COG": df["COG"],
+                "product": df["product"],
+                "predicted_structure": "",
+                "IPS": "",
+                "Manual_annotation": "",
+            })
+
+            dfs.append(out)
+
+        pd.concat(dfs, ignore_index=True).to_csv(output[0], index=False)
