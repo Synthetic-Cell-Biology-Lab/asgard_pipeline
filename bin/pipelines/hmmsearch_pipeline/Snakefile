@@ -60,32 +60,43 @@ configfile: "config.yaml"
 # -------------------------------
 OUTDIR = Path(config["output"]["dir"])
 PROJECT_NAME = config['project']['title']
-RESULT_DIR = OUTDIR / PROJECT_NAME / "hmmsearch"
+
 
 RUN_ID = config['run_id']
+
+RESULT_DIR = OUTDIR / PROJECT_NAME / f"{RUN_ID}"/"hmmsearch"
 
 PFAM_DB = config["pfam"]["hmm_db"]
 PFAM_NAMES = config["pfam"]["names"]
 DB = config["database"]["fasta"]
+ASCOGS = config["database"]["AsCOGs"]
+ASCOGS_TSV = config['database']['ascogs_tsv']
 
 EVALUE = config["params"]["evalue"]
 CPUS = config["params"]["cpus"]
 
-FINAL_CSV = f"{RESULT_DIR}/hits/final_hits_{RUN_ID}.csv"
-FILTERED_FINAL_CSV = f"{RESULT_DIR}/hits/fitered_hits_{RUN_ID}.csv"
+FINAL_CSV = f"{RESULT_DIR}/hits/hits_{RUN_ID}.csv"
 PFAM_IDS_FILE = f"{RESULT_DIR}/pfam_ids.txt"
+ASCOG_IDS_FILE =  f"{RESULT_DIR}/ascog_ids.txt"
 MAPPING_FILE = f"{RESULT_DIR}/pfam_mapping.tsv"
 
+FINAL_TARGETS = [
+        FINAL_CSV,
+        PFAM_IDS_FILE,
+        f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta"
+]
+
+if config.get("Run_full", False):
+    FINAL_TARGETS.append(f"{RESULT_DIR}/sequences"),
+    FINAL_TARGETS.append(f"{RESULT_DIR}/report/sequence_report_{RUN_ID}.pdf")
 # -------------------------------
 # FINAL TARGET
 # -------------------------------
 rule all:
     input:
-        FINAL_CSV,
-        PFAM_IDS_FILE,
-        f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta",
-        f"{RESULT_DIR}/sequences",
-        f"{RESULT_DIR}/report/sequence_report_{RUN_ID}.pdf"
+        FINAL_TARGETS
+
+
 
 # -------------------------------
 # Download Pfam DB (if missing)
@@ -139,52 +150,131 @@ rule build_pfam_mapping:
 # -------------------------------
 rule resolve_pfam_ids:
     input:
-        MAPPING_FILE
+        MAPPING_FILE,
+        ASCOGS_TSV
     output:
-        PFAM_IDS_FILE
+        PFAM_IDS_FILE,
+        ASCOG_IDS_FILE
     params:
         names=config["pfam"].get("names", []),
         ids=config["pfam"].get("ids", [])
+    conda:
+        f"{config['env_dir']}/Reg.yaml"
     run:
-        mapping = {}
+        import pandas as pd
 
-        # Load NAME → ACC mapping
-        with open(input[0]) as f:
-            for line in f:
-                name, acc = line.strip().split("\t")
-                mapping[name] = acc
+        mapping = pd.read_csv(input[0], sep="\t", names=["desc", "pfam_id"])
+        ascogs = pd.read_csv(
+            input[1], sep="\t", names=["ascog", "arcog", "cat", "gene", "desc"]
+        )
+        names = params.names or []
+        ids = params.ids or []
+        terms = [str(t).strip() for t in (list(names) + list(ids)) if str(t).strip()]
 
-        final_ids = set()
+        if not terms:
+            raise ValueError(
+                "No Pfam names or ids provided — check config['pfam']['names'] "
+                "and config['pfam']['ids'] are non-empty lists."
+            )
 
-        # -------------------------
-        # 1. Direct HMM IDs
-        # -------------------------
-        if params.ids:
-            print(f"Using direct HMM IDs: {params.ids}")
-            for pid in params.ids:
-                matches = [p for p in mapping.values() if pid.lower() in p.lower()]
-                final_ids.update(matches)
+        def resolve_rows(df, search_cols, term):
+            """Return full matching rows (substring, case-insensitive) across search_cols."""
+            mask = df[search_cols].apply(
+                lambda col: col.astype(str).str.contains(term, case=False, na=False)
+            ).any(axis=1)
+            return df.loc[mask]
 
-        # -------------------------
-        # 2. Resolve search terms
-        # -------------------------
-        if params.names:
-            print(f"Resolving names: {params.names}")
-            for name in params.names:
-                if name in mapping:
-                    final_ids.add(mapping[name])
-                else:
-                    print(f"WARNING: {name} not found in Pfam mapping")
+        pfam_matches = []
+        ascog_matches = []
 
-        # -------------------------
-        # 3. Write output
-        # -------------------------
-        if not final_ids:
-            raise ValueError("No valid PFAM IDs found from names or ids")
+        for term in terms:
+            term = str(term).strip()
+            if not term:
+                continue
 
+            pmatch = resolve_rows(mapping, ["pfam_id", "desc"], term)
+            if pmatch.empty:
+                print(f"[resolve_pfam_ids] WARNING: no Pfam match for '{term}'")
+            else:
+                pfam_matches.append(pmatch)
+
+            amatch = resolve_rows(ascogs, ["ascog", "arcog", "gene", "desc"], term)
+            if amatch.empty:
+                print(f"[resolve_pfam_ids] WARNING: no ASCOG match for '{term}'")
+            else:
+                ascog_matches.append(amatch)
+
+        pfam_df = (
+            pd.concat(pfam_matches).drop_duplicates(subset="pfam_id")
+            if pfam_matches
+            else pd.DataFrame(columns=mapping.columns)
+        )
+        ascog_df = (
+            pd.concat(ascog_matches).drop_duplicates(subset="ascog")
+            if ascog_matches
+            else pd.DataFrame(columns=ascogs.columns)
+        )
+
+        if pfam_df.empty and ascog_df.empty:
+            raise ValueError("No valid IDs found from names or ids")
+
+        # PFAM_IDS_FILE: one accession per line (as before)
         with open(output[0], "w") as out:
-            for pid in sorted(final_ids):
+            for pid in sorted(pfam_df["pfam_id"]):
                 out.write(pid + "\n")
+
+        # ASCOG_IDS_FILE: full rows, all columns, tab-separated, with header
+        ascog_df.sort_values("ascog").to_csv(
+            output[1], sep="\t", index=False
+        )
+
+
+
+rule make_cog_hmms:
+    input:
+        ASCOG_IDS_FILE,
+        ASCOGS
+    output:
+        directory(f"{RESULT_DIR}/temp/{RUN_ID}/"),
+        f"{RESULT_DIR}/temp/{RUN_ID}.done"
+    conda:
+        f"{config['env_dir']}/hmmer.yaml"
+    shell:
+        r"""
+        mkdir -p {output[0]}
+
+        tail -n +2 "{input[0]}" | while IFS=$'\t' read -r ascog arcog category gene desc || [[ -n "$ascog" ]]; do
+            [[ -z "$ascog" ]] && continue
+
+            afa="{input[1]}/${{ascog}}.afa"
+
+            if [[ ! -f "$afa" ]]; then
+                echo "ERROR: Alignment not found: $afa" >&2
+                exit 1
+            fi
+
+            if [[ -z "$gene" || "$gene" == "-" ]]; then
+                gene="$ascog"
+            fi
+
+            hmm_out="{output[0]}/${{ascog}}.hmm"
+
+            hmmbuild -n "$gene" "$hmm_out" "$afa"
+
+            awk -v acc="$ascog" -v desc="$desc" '
+                {{ print }}
+                /^NAME/ && !inserted {{
+                    print "ACC   " acc
+                    print "DESC  " desc
+                    inserted=1
+                }}
+            ' "$hmm_out" > "${{hmm_out}}.tmp" && mv "${{hmm_out}}.tmp" "$hmm_out"
+
+        done
+
+        touch {output[1]}
+        """
+
 
 # -------------------------------
 # Extract HMMs using hmmfetch
@@ -193,24 +283,35 @@ rule extract_hmms:
     input:
         PFAM_DB,
         PFAM_DB + ".h3m",
-        PFAM_IDS_FILE
+        PFAM_IDS_FILE,
+        f"{RESULT_DIR}/temp/{RUN_ID}.done",
+        f"{RESULT_DIR}/temp/{RUN_ID}/"
     output:
         f"{RESULT_DIR}/hmms/{RUN_ID}.hmm"
     conda:
         f"{config['env_dir']}/hmmer.yaml"
     shell:
-        """
-        touch {output}
+        r"""
+        mkdir -p "{RESULT_DIR}/hmms"
 
-        mkdir -p {RESULT_DIR}/hmms
-        > {output}
+        # Create/empty the output file
+        > "{output}"
 
-        while read pfam; do
+        while IFS= read -r pfam || [[ -n "$pfam" ]]; do
+            [[ -z "$pfam" ]] && continue
+
             echo "Fetching $pfam"
-            hmmfetch {input[0]} $pfam >> {output} || echo "WARNING: $pfam failed"
-        done < {input[2]}
+            hmmfetch "{input[0]}" "$pfam" >> "{output}" \
+                || echo "WARNING: $pfam failed"
+        done < "{input[2]}"
 
+        find "{input[4]}" -maxdepth 1 -type f -name "*.hmm" -print0 |
+        while IFS= read -r -d '' file; do
+            cat "$file" >> "{output}"
+        done
         """
+
+
 
 # -------------------------------
 # Press combined HMM
@@ -266,28 +367,80 @@ rule parse_results:
 
 rule filter_results:
     input:
-        FINAL_CSV
+        FINAL_CSV,
+        ASCOGS_TSV
     output:
-        FILTERED_FINAL_CSV
+        filtered = f"{RESULT_DIR}/hits/fitered_hits_{RUN_ID}.csv",
+        final = f"{RESULT_DIR}/hits/final_hits_{RUN_ID}.csv"               
     params:
-        evalue=config.get("params", {}).get("evalue", 1e-3)
+        evalue=config.get("params", {}).get("evalue", 1e-3),
+        min_coverage=config.get("params", {}).get("min_coverage", 0.7)
     conda:
         f"{config['env_dir']}/Reg.yaml"
     run:
         import pandas as pd
 
         indb = pd.read_csv(input[0])
-        indb['full_evalue'] = indb['full_evalue'].astype(float)
-        fildb = indb[indb["full_evalue"] <= float(params.evalue)]
+        ascogs = pd.read_csv(input[1], sep="\t", names=["ascog", "arcog", "cat", "gene", "desc"])
 
-        fildb.to_csv(output[0], index=False)
+        # numeric coercion for filtering
+        indb["full_evalue"] = pd.to_numeric(indb["full_evalue"], errors="coerce")
+        indb["coverage"] = pd.to_numeric(indb["coverage"], errors="coerce")
+
+        # drop stale/placeholder columns that will be replaced by the merge,
+        # so we don't end up with gene_x/gene_y-style suffix collisions
+        stale_cols = ["gene", "ascog_id", "arcog_id", "category", "description"]
+        indb = indb.drop(columns=[c for c in stale_cols if c in indb.columns])
+
+        merged = indb.merge(
+            ascogs,
+            left_on="qacc",
+            right_on="ascog",
+            how="left",
+        )
+
+        # standardize naming to match the rest of the table
+        merged = merged.rename(
+            columns={
+                "ascog": "ascog_id",
+                "arcog": "arcog_id",
+                "cat": "category",
+                "desc": "description",
+            }
+        )
+
+        n_unmatched = merged["ascog_id"].isna().sum()
+        if n_unmatched:
+            print(f"WARNING: {n_unmatched} rows had no matching ascog for their qacc")
+
+        # move description to be the second column
+        cols = list(merged.columns)
+        cols.remove("description")
+        cols.insert(1, "description")
+        merged = merged[cols]
+
+        # apply e-value and coverage filters
+        filtered = merged[
+            (merged["full_evalue"] <= float(params.evalue))
+            & (merged["coverage"] >= float(params.min_coverage))
+        ]
+
+        filtered.to_csv(output.filtered, index=False)
+                # best hit per protein_id = lowest full_evalue, taken from the filtered set
+        if filtered.empty:
+            print("WARNING: no rows passed filtering; best_hits output will be empty")
+            filtered.to_csv(output.best_hits, index=False)
+        else:
+            best_idx = filtered.groupby("protein_id")["full_evalue"].idxmin()
+            best_hits = filtered.loc[best_idx].sort_values("protein_id")
+            best_hits.to_csv(output.final, index=False)
     
 
 
 
 rule extract_hit_sequences:
     input:
-        csv=FILTERED_FINAL_CSV,
+        csv=f"{RESULT_DIR}/hits/final_hits_{RUN_ID}.csv",
         fasta=DB
     output:
         f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta"
@@ -302,7 +455,7 @@ rule extract_hit_sequences:
 
 rule review_gate:
     input:
-        FILTERED_FINAL_CSV
+        f"{RESULT_DIR}/hits/final_hits_{RUN_ID}.csv"
     output:
         f"{RESULT_DIR}/reviewed_accessions.tsv"
     message:

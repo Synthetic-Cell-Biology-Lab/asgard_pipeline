@@ -1,23 +1,27 @@
 ---
 pipeline: hmmsearch_pipeline
-run_id: dipa_run3
-protein_name: dip
+run_id: ESCRTIII_run1
+protein_name: ESCRTIII
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+reason: to extract proteins using hmm for ESCRTIII proteins in asgard
 cores: 24
 project:
-  title: dip
-  description: to extract proteins using hmm for Dip proteins in asgard
+  title: ESCRTIII
+  description: to extract proteins using hmm for ESCRTIII proteins in asgard
 pfam:
   hmm_db: "/home/anirudh/asgard_pipeline/database/pfam/Pfam-A.hmm"
   names:
+  - ESCRTIII
+  - cdvb
   ids:
-  - PF01926
 database: &1
   fasta: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
   fna: "/home/anirudh/asgard_pipeline/database/other_organisms/pullulans/GCF_000721785.1_Aureobasidium_pullulans_var._pullulans_EXF-150_assembly_version_1.0_genomic.fna"
   gbff: "/home/anirudh/asgard_pipeline/database/other_organisms/pullulans/GCF_000721785.1_Aureobasidium_pullulans_var._pullulans_EXF-150_assembly_version_1.0_genomic.gbff"
+  AsCOGs: "/home/anirudh/asgard_pipeline/database/COG/AsCOGs/ali.8/"
+  ascogs_tsv: "/home/anirudh/asgard_pipeline/database/COG/AsCOGs/asCOGs.2020-10.def.tab"
 params:
   get_flanks: false
   evalue: 1e-5

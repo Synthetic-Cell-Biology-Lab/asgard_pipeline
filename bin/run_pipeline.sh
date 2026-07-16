@@ -206,7 +206,7 @@ if ! snakemake \
     --cores "$CORES" \
     --printshellcmds \
     --conda-frontend conda \
-    2>&1 | grep -vE "Waiting for running|Resources (before|after)|Ready jobs|Selected jobs" | tee -a "$LOG_FILE"
+    2>&1 | tee -a "$LOG_FILE"
 then
     STATUS="FAILED"
 fi
