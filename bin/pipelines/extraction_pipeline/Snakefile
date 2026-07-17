@@ -11,53 +11,6 @@ import glob
 
 shell.executable("/bin/bash")
 
-# Expect config from CLI
-# syncing nested config inputs with non nested (to be phased out)
-
-def _cfg_get(path, default=None):
-    cur = config
-    for key in path:
-        if not isinstance(cur, dict) or key not in cur:
-            return default
-        cur = cur[key]
-    return cur
-
-
-def _cfg_sync(flat_key, nested_path, default=None):
-    nested_val = _cfg_get(nested_path, None)
-    if nested_val is not None and flat_key not in config:
-        config[flat_key] = nested_val
-    elif flat_key in config and nested_val is None:
-        cur = config
-        for key in nested_path[:-1]:
-            cur = cur.setdefault(key, {})
-        cur[nested_path[-1]] = config[flat_key]
-    elif flat_key not in config and nested_val is None and default is not None:
-        config[flat_key] = default
-
-
-_cfg_sync("base_dir", ["run", "base_dir"])
-_cfg_sync("env_dir", ["run", "env_dir"])
-_cfg_sync("log_dir", ["run", "log_dir"])
-_cfg_sync("pipeline_log", ["run", "pipeline_log"])
-_cfg_sync("cores", ["run", "cores"])
-_cfg_sync("database", ["inputs", "database"])
-_cfg_sync("raw_database", ["inputs", "raw_database"])
-_cfg_sync("genome_file", ["inputs", "genome_file"])
-_cfg_sync("protein_file", ["inputs", "protein_file"])
-_cfg_sync("fasta_file", ["inputs", "fasta_file"])
-_cfg_sync("from_database", ["modes", "from_database", "enabled"])
-_cfg_sync("phylogeny_threads", ["phylogeny", "threads"])
-_cfg_sync("run_itol_upload", ["phylogeny", "run_itol_upload"])
-_cfg_sync("itol_project", ["phylogeny", "itol_project"])
-_cfg_sync("PLOT_Y_COLUMN", ["plot", "y_column"])
-_cfg_sync("PLOT_FILTER_COLUMN", ["plot", "filter_column"])
-_cfg_sync("PLOT_FILTER_VALS", ["plot", "filter_values"])
-_cfg_sync("PLOT_TAXON_LEVELS", ["plot", "taxon_levels"])
-_cfg_sync("PLOT_PROTEINS_PRESENCE", ["plot", "proteins_presence"])
-_cfg_sync("ymin", ["plot", "ymin"])
-_cfg_sync("ymax", ["plot", "ymax"])
-
 # throw error if no config
 if not config:
     raise ValueError("No config provided. Use --configfile.")
@@ -73,7 +26,7 @@ RUN_ID = config.get("run").get("id", TIMESTAMP)
 
 # Define the paths for output
 BASE_DIR = os.getcwd()
-CURRENT_DIR = config.get(run, {}).get('base_dir', workflow.basedir)
+CURRENT_DIR = config.get("run", {}).get('base_dir', workflow.basedir)
 RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
 EXPLORATION_DIR = f"{RESULT_DIR}/extraction_exploration"
 PHYLO_DIR = f"{RESULT_DIR}/final_phylogeny"
@@ -99,16 +52,31 @@ From_manual: retrieves the proteins from previously defined manual annotation in
 from_fasta_csv: inherits the sequences from a given csv and fasta file.
 """
 
-if config.get("modes", {}).get("parse_ips", False):
-    include: "../rules/parse_ips.smk"
-elif config.get("modes", {}).get("hmmsearch", False):
-    include: "../rules/hmmsearch.smk"
-elif config.get("modes", {}).get("from_manual", False):
-    include: "../rules/from_manual.smk"
-elif config.get("modes", {}).get("from_fasta_csv", False):
-    include: "../rules/from_fasta_and_csv.smk"
+
+import pprint
+
+# print("===== CONFIG =====")
+# pprint.pprint(config["modes"])
+# print("==================")
+
+if config["modes"]["parse_ips"]["enabled"]:
+    # print(">>> INCLUDING parse_ips.smk")
+    include: "rules/parse_ips.smk"
+
+elif config["modes"]["hmmsearch"]["enabled"]:
+    # print(">>> INCLUDING hmmsearch.smk")
+    include: "rules/hmmsearch.smk"
+
+elif config["modes"]["from_manual"]["enabled"]:
+    # print(">>> INCLUDING from_manual.smk")
+    include: "rules/from_manual.smk"
+
+elif config["modes"]["from_fasta_csv"]["enabled"]:
+    # print(">>> INCLUDING from_fasta_and_csv.smk")
+    include: "rules/from_fasta_and_csv.smk"
+
 else:
-    print("Must include atleast one mode of id extraction")
+    raise ValueError("No extraction mode enabled.")
     sys.exit()
 
 
@@ -116,8 +84,8 @@ else:
 Adds the rules present in exploration and ssn_3 snakemake files.
 
 """
-include: "../rules/exploration.smk"
-include: "../rules/ssn_3.smk"
+include: "rules/exploration.smk"
+include: "rules/ssn_3.smk"
 ########################################
 # Final Target
 ########################################
@@ -136,19 +104,19 @@ FINAL_TARGETS = [
 FINAL_TARGETS.extend(
     expand(
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg",
-        level=config.get("plot")("taxon_levels")
+        level=config.get("plot", []).get("taxon_levels", [])
     )
 )
 
 FINAL_TARGETS.extend(
     expand(
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg",
-        level=config.get("plot")("taxon_levels")
+        level=config.get("plot", []).get("taxon_levels", [])
     )
 )
 
 
-FINAL_TARGETS.extend(
+FINAL_TARGETS.append(
     f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg"
 )
 
@@ -231,7 +199,7 @@ rule protein_coencoding_heatmap_unreviewed:
         cond = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
 
     params:
-        proteins = config.get("plot", []).get("proteins_presence", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
+        proteins = config.get("plot", []).get("proteins_presence", ["FtsZ1","FtsZ2","CetZ","Tubulin"]),
         group_col = config.get("plot", []).get("taxon_levels", "class")
 
     conda:

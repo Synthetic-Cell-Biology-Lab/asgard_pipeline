@@ -11,7 +11,7 @@ INPUT_TABLE = "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered
 
 # dictionary: annotation_name -> file containing protein ids
 annotation_files = {
-    "demo": "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/demo.ids",
+    "Actin": "/home/anirudh/asgard_pipeline/database/protein_sets/protein_ids/Actin.ids",
 }
 
 # ============================================================

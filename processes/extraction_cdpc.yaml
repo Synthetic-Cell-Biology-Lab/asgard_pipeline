@@ -1,6 +1,5 @@
----
 run:
-  id: cdpc_run1
+  id: cdpc_run4
   protein_name: cdpc
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"

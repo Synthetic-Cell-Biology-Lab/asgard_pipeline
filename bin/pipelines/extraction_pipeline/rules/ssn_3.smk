@@ -63,7 +63,7 @@ rule ssn_search:
     output:
         similarities = f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
     params:
-        evalue = config.get('SSN')("SSN_EVALUE", 1e-5),
+        evalue = config.get('SSN').get("SSN_EVALUE", 1e-5),
     threads: config.get("SSN", config.get("cores", 16)).get("SSN_CORES", config.get("cores", 16))
     resources:
         mem_mb  = config.get('SSN', []).get("mem_mb", 16000),
@@ -299,7 +299,7 @@ rule ssn_network:
 Moves it to windows system
 The original user was working in WSL therefore this need 
 """
-if config.get('SSN', FALSE).get("copy_to_windows", False):
+if config.get('SSN', {}).get("copy_to_windows", False):
 
     rule copy_outs_to_windows:
         input:
@@ -310,35 +310,45 @@ if config.get('SSN', FALSE).get("copy_to_windows", False):
                 ],
                 bitscore=BITSCORES
             ),
-            nodes     = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
-            clusters  = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
+            nodes = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
+            clusters = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
             fasta_dir = f"{SSN_DIR}/cluster_fastas",
             tax_annotation = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
             full_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
 
         output:
-            flag   = f"{SSN_DIR}/copied_to_windows.flag",
-            outdir = directory(f"{config['windows_path']}/{PROTEIN}/{RUN_ID}")
+            flag = f"{SSN_DIR}/copied_to_windows.flag",
+
+        log:
+            f"{LOG_DIR}/copy_outs_to_windows.log"
 
         params:
             outdir = f"{config['SSN']['windows_path']}/{PROTEIN}/{RUN_ID}"
 
         shell:
             r"""
+            exec > >(tee "{log}") 2>&1
             set -euxo pipefail
 
             mkdir -p "{params.outdir}"
 
-            for f in {input.per_bs}; do
-                cp "$f" "{params.outdir}/"
-            done
+            # Copy all edge files
+            rsync -av --progress \
+                {input.per_bs} \
+                "{params.outdir}/"
 
-            cp "{input.nodes}" "{params.outdir}/"
-            cp "{input.clusters}" "{params.outdir}/"
-            cp "{input.tax_annotation}" "{params.outdir}/"
-            cp "{input.full_csv}" "{params.outdir}/"
-            cp -r "{input.fasta_dir}" "{params.outdir}/"
+            # Copy remaining files
+            rsync -av --progress \
+                "{input.nodes}" \
+                "{input.clusters}" \
+                "{input.tax_annotation}" \
+                "{input.full_csv}" \
+                "{params.outdir}/"
 
+            # Copy FASTA directory
+            rsync -av --progress \
+                "{input.fasta_dir}/" \
+                "{params.outdir}/cluster_fastas/"
 
             touch "{output.flag}"
             """
