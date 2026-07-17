@@ -219,7 +219,7 @@ rule upload_to_itol:
 
     params:
         project   = config.get("itol_project", "Asgard"),
-        tree_name = f"fast_{config.get('run', [])('id', 'run')}_{PROTEIN}",
+        tree_name = f"fast_{config.get('run', []).get('id', 'run')}_{PROTEIN}",
         all_annots = lambda wildcards, input: (
             sorted(glob.glob(f"{PHYLO_DIR}/annotation/*.txt"))
             + ([input.colorstrip])
