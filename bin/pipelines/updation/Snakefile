@@ -23,6 +23,8 @@ configfile: "config.yaml"
 CURRENT_DIR = config.get('base_dir', workflow.basedir)
 
 
+# this is for unifying nested paths in configs with regular paths
+
 def _cfg_get(path, default=None):
     cur = config
     for key in path:
@@ -144,6 +146,8 @@ rule all:
         expand(f"{config['out_protein_csv']}_{{org}}.csv", org = ORGS)
 
 
+
+# get the list of genomes that is already present in our database
 rule check_database:
     input:
         input_path = f"{BAKTA_OUTDIR}/{{org}}/"
@@ -157,8 +161,15 @@ rule check_database:
         
         """
 
-
+# get the summary of genomse deposited in the ncbi-datasets with our specifications
 rule get_summary:
+    """
+    The input taken (in params) is the organism name that is matching to ncbi-dataset
+    in the config file
+
+    Gives output of a summary file matching the constraints provided from ncbi-datasets  
+    Search yields serveral reports per genome, needs to be deduplicated.
+    """
     output:
         summary=f"{OUTDIR}/{{org}}/genomes_summary.tsv"
     conda:
@@ -172,13 +183,14 @@ rule get_summary:
         refseq=lambda wc: "--reference" if get_org_param(wc, "refseq_only") else ""
     shell:
         r"""
+        # The input given is the name of the organism, convert to taxa id
         TAXID=$(
             datasets summary taxonomy taxon "{params.name}" \
                 --as-json-lines \
             | dataformat tsv taxonomy --template tax-summary \
             | awk 'NR==2 {{print $2}}'
         )
-
+        
         datasets summary genome taxon "$TAXID" \
             {params.level} \
             {params.refseq} \
@@ -187,7 +199,15 @@ rule get_summary:
         > {output.summary}
         """
 
+
+
+
 rule prepare_download_list:
+    """
+    Takes input of the summary file and the genomes in the database 
+    and creates a list that is not there in our database
+    
+    """
     input:
         summary=f"{OUTDIR}/{{org}}/genomes_summary.tsv",
         genomes_present = f"{OUTDIR}/{{org}}/present_list.txt"
@@ -216,6 +236,7 @@ rule prepare_download_list:
 
 
 rule download_genomes:
+    # Downloads genomes from ncbi datasets
     input:
         accession_list = f"{OUTDIR}/{{org}}/accession_list_to_download.txt"
     output:
@@ -233,6 +254,7 @@ rule download_genomes:
 
 
 rule extract_genomes:
+# extracts genomes and rehydrates them to recover full file
     input:
         zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
     output:
@@ -258,6 +280,10 @@ rule extract_genomes:
 
 
 rule checkm2:
+    """
+    Given that we are working with MAGs, we need to perform quality control to 
+    ensure that the results that get is valid and not from contamination
+    """
     input:
         flag        = f"{OUTDIR}/{{org}}/done.flag",
         genomes_dir = f"{OUTDIR}/{{org}}/genomes"
@@ -285,6 +311,7 @@ rule checkm2:
 
 
 rule link_filtered:
+    # create symlink for files that pass checkm2 parameter thresholds
     input:
         quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
         genomes_dir    = lambda wc: stage_dir(wc.org, "raw")   # FIX: was prev_stage_dir(wc.org, "filtered")
@@ -315,6 +342,7 @@ rule link_filtered:
 
 
 rule skder:
+    # Deduplication of genomes to avoid over-representation of any genome
     input:
         genomes_dir = lambda wc: prev_stage_dir(wc.org, "derep"),
         stage_list  = lambda wc: f"{prev_stage_dir(wc.org, 'derep')}/passed_genomes.txt"
@@ -345,6 +373,7 @@ rule skder:
 
 
 rule gtdbtk:
+    # taxonomic classification of genomes
     input:
         genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}",
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
@@ -388,6 +417,8 @@ rule gtdbtk:
 
 
 checkpoint split_taxonomy:
+    # split the taxonomic levels into individual columns from the gtdbtk output
+    # also a checkpoint to revise the processes required to be run
     input:
         flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
 
@@ -423,6 +454,7 @@ checkpoint split_taxonomy:
 
 
 rule taxa_counts:
+    # plot taxacounts at class level
     input:
         csv = f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
     output:
@@ -443,7 +475,7 @@ rule taxa_counts:
         """
 
 
-
+# helper functions to get the bakta, interproscan and collation output for all genomes
 def _get_filtered_genome_list(org):
     csv_path = checkpoints.split_taxonomy.get(org=org).output[0]
     df = pd.read_csv(csv_path)
@@ -470,7 +502,7 @@ def filtered_tsv_for_org(wildcards):
 
 
 
-
+# 
 rule bakta:
     input:
         flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",

@@ -1,8 +1,25 @@
-BITSCORES = config.get("SSN_BITSCORES", [50, 80, 100])
+
+"""
+This smk file codes for the sequence similarity network part of the 
+exploration pipeline. 
+"""
+
+
+# Defines the different thresholds at which the SSNs need to be created.
+# Any 2 proteins (nodes) are joined with an edge provided it
+# has a bitscore greater than the threshold
+BITSCORES = config.get('SSN', []).get("SSN_BITSCORES", [50, 80, 100])
 
 # =============================================================================
 # Rule 1: CD-HIT clustering
 # =============================================================================
+"""
+Sequences are first deduplicated to reduce the computational expense as
+well as the rendering in cytoscape
+
+CD-hit is used for the deduplication with cut-offs defined in the config file
+Defaults are used in the absence of the cut-offs
+"""
 rule ssn_cdhit:
     input:
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
@@ -11,16 +28,16 @@ rule ssn_cdhit:
         clstr = f"{SSN_DIR}/{PROTEIN}.nr.fasta.clstr",
     params:
         identity = config.get("SSN_IDENTITY", 0.95),
-    threads: config.get("SSN_CORES", config.get("cores", 16))
+    threads: config.get("SSN", config.get("cores", 16)).get("SSN_CORES", config.get("cores", 16))
     resources:
-        mem_mb  = config.get("SSN_MEM_MB", 16000),
-        runtime = config.get("SSN_RUNTIME_MIN", 120)
+        mem_mb  = config.get('SSN', []).get("mem_mb", 16000),
+        runtime = config.get('SSN', []).get("runtime_min", 120)
     log:
         f"{LOG_DIR}/ssn/{PROTEIN}.cdhit.log"
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.cdhit.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     shell:
         """
         bash {CURRENT_DIR}/bin/units/ssn_cdhit.sh \
@@ -35,23 +52,28 @@ rule ssn_cdhit:
 # =============================================================================
 # Rule 2: All-vs-all similarity search
 # =============================================================================
+"""
+Creates a similarities tsv which contains all pairs of nodes
+and the BLAST results between the pair. Here the pairs with evalue less
+that 1e-5 are removed
+"""
 rule ssn_search:
     input:
         nr = f"{SSN_DIR}/{PROTEIN}.nr.fasta",
     output:
         similarities = f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
     params:
-        evalue = config.get("SSN_EVALUE", 1e-5),
-    threads: config.get("SSN_CORES", config.get("cores", 16))
+        evalue = config.get('SSN')("SSN_EVALUE", 1e-5),
+    threads: config.get("SSN", config.get("cores", 16)).get("SSN_CORES", config.get("cores", 16))
     resources:
-        mem_mb  = config.get("SSN_MEM_MB", 16000),
-        runtime = config.get("SSN_RUNTIME_MIN", 600)
+        mem_mb  = config.get('SSN', []).get("mem_mb", 16000),
+        runtime = config.get('SSN', []).get("runtime_min", 120)
     log:
         f"{LOG_DIR}/ssn/{PROTEIN}.search.log"
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.search.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     shell:
         """
         bash {CURRENT_DIR}/bin/units/ssn_search.sh \
@@ -66,6 +88,10 @@ rule ssn_search:
 # =============================================================================
 # Rule 3a: Node metadata — runs once, shared across all bitscore levels
 # =============================================================================
+"""
+Contains node metadata - protein length
+
+"""
 rule ssn_nodes:
     input:
         nr = f"{SSN_DIR}/{PROTEIN}.nr.fasta",
@@ -79,7 +105,7 @@ rule ssn_nodes:
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.nodes.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     shell:
         """
         bash {CURRENT_DIR}/bin/units/ssn_nodes.sh \
@@ -92,6 +118,11 @@ rule ssn_nodes:
 # =============================================================================
 # Rule 3b: Edge filtering — one job per bitscore level
 # =============================================================================
+"""
+creates the edges.tsv file based on the similarities file by creating
+different filters of bitscores (as defined in the start of the script)
+
+"""
 rule ssn_filter:
     input:
         similarities = f"{SSN_DIR}/{PROTEIN}.similarities.tsv",
@@ -100,8 +131,8 @@ rule ssn_filter:
         edges = f"{SSN_DIR}/{PROTEIN}.bs{{bitscore}}.edges.tsv",
     params:
         bitscore = lambda wc: wc.bitscore,
-        coverage = config.get("SSN_COVERAGE", 0.6),
-        evalue   = config.get("SSN_EVALUE",   1e-5),
+        coverage = config.get('SSN', []).get("coverage", 0.6),
+        evalue   = config.get("SSN", []).get('evalue',   1e-5),
     resources:
         mem_mb  = 4000,
         runtime = 30
@@ -110,7 +141,7 @@ rule ssn_filter:
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.bs{{bitscore}}.filter.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     shell:
         """
         bash {CURRENT_DIR}/bin/units/ssn_filter.sh \
@@ -127,6 +158,12 @@ rule ssn_filter:
 # =============================================================================
 # Rule 4: Cytoscape export
 # =============================================================================
+"""
+creates files in formats readable by cytoscape
+ea has protein1, protein2, score
+sif has protein1, relation(here similarity), protein2
+
+"""
 rule ssn_cytoscape:
     input:
         edges = f"{SSN_DIR}/{PROTEIN}.bs{{bitscore}}.edges.tsv",
@@ -142,7 +179,7 @@ rule ssn_cytoscape:
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.bs{{bitscore}}.cytoscape.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     shell:
         """
         bash {CURRENT_DIR}/bin/units/ssn_cytoscape.sh \
@@ -156,6 +193,10 @@ rule ssn_cytoscape:
 # =============================================================================
 # Rule 5: Annotation / taxonomy
 # =============================================================================
+"""
+creates the taxnomy csv for the annotation in cytoscape
+
+"""
 rule ssn_annotate:
     input:
         nodes = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
@@ -163,7 +204,7 @@ rule ssn_annotate:
     output:
         taxonomy = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
     params:
-        locus_tag = config.get("LOCUS_TAG", "locus_tag")
+        locus_tag = config['run'].get("LOCUS_TAG", "locus_tag")
     resources:
         mem_mb  = 2000,
         runtime = 10
@@ -172,7 +213,7 @@ rule ssn_annotate:
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.annotate.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     shell:
         """
         bash {CURRENT_DIR}/bin/units/ssn_annotate.sh \
@@ -186,6 +227,10 @@ rule ssn_annotate:
 # =============================================================================
 # Rule 6: Cluster assignment + per-cluster FASTAs
 # =============================================================================
+"""
+Allots cluster ids to each protein based on their cytoscape cluster
+this is used to visualize the clusters during tree visualization in iTOL
+"""
 rule ssn_cluster:
     input:
         nodes = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
@@ -209,7 +254,7 @@ rule ssn_cluster:
     benchmark:
         f"{BENCHMARK_DIR}/ssn/{PROTEIN}.cluster.benchmark.tsv"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     shell:
         """
         python {CURRENT_DIR}/bin/units/ssn_cluster.py \
@@ -225,8 +270,10 @@ rule ssn_cluster:
 
 
 # =============================================================================
-# Aggregator
+# Aggregator (calls for the outputs for all bitscores in BITSCORES)
 # =============================================================================
+
+
 rule ssn_network:
     input:
         expand(
@@ -247,7 +294,12 @@ rule ssn_network:
 # =============================================================================
 # Optional: copy to Windows
 # =============================================================================
-if config.get("copy_to_windows", False):
+
+"""
+Moves it to windows system
+The original user was working in WSL therefore this need 
+"""
+if config.get('SSN', FALSE).get("copy_to_windows", False):
 
     rule copy_outs_to_windows:
         input:
@@ -269,7 +321,7 @@ if config.get("copy_to_windows", False):
             outdir = directory(f"{config['windows_path']}/{PROTEIN}/{RUN_ID}")
 
         params:
-            outdir = f"{config['windows_path']}/{PROTEIN}/{RUN_ID}"
+            outdir = f"{config['SSN']['windows_path']}/{PROTEIN}/{RUN_ID}"
 
         shell:
             r"""
