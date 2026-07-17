@@ -12,31 +12,55 @@ COLUMN="$2"
 DB="$3"
 OUT="$4"
 
-TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
+# Extract accessions with a real CSV parser (handles quoting/commas correctly)
+mapfile -t ACCESSIONS < <(python3 - "$CSV" "$COLUMN" <<'EOF'
+import csv, sys
+path, column = sys.argv[1], sys.argv[2]
+with open(path, newline='') as f:
+    reader = csv.DictReader(f)
+    if column not in reader.fieldnames:
+        sys.exit(f"Column '{column}' not found. Available: {reader.fieldnames}")
+    for row in reader:
+        acc = (row[column] or "").strip()
+        if acc:
+            print(acc)
+EOF
+)
 
-mkdir -p "$TMPDIR/cds"
-
-# Determine the column index from the header
-COL_IDX=$(head -n1 "$CSV" | tr ',' '\n' | nl -v1 | awk -v c="$COLUMN" '$2==c{print $1}')
-
-if [[ -z "$COL_IDX" ]]; then
-    echo "Column '$COLUMN' not found."
+if [[ ${#ACCESSIONS[@]} -eq 0 ]]; then
+    echo "Error: no accessions extracted from '$CSV' column '$COLUMN'." >&2
     exit 1
 fi
 
-tail -n +2 "$CSV" | while IFS=, read -r -a fields; do
-    ACC=$(echo "${fields[$((COL_IDX-1))]}" | xargs)   # trim whitespace
+copied=0
+missing=0
+FILES_LIST=$(mktemp)
+trap 'rm -f "$FILES_LIST"' EXIT
 
-    SRC="$DB/$ACC"
 
-    if [[ -d "$SRC" ]]; then
-        cp -a "$SRC" "$TMPDIR/"
+for ACC in "${ACCESSIONS[@]}"; do
+    if [[ -d "$DB/$ACC" ]]; then
+        echo "$ACC" >> "$FILES_LIST"
+        copied=$((copied+1))
     else
-        echo "Warning: directory '$SRC' not found" >&2
+        echo "Warning: directory '$DB/$ACC' not found" >&2
+        missing=$((missing+1))
     fi
 done
 
-tar --zstd -cf "${OUT}.tar.zst" -C "$TMPDIR" cds
+
+echo "Found: $copied   Missing: $missing"
+
+if [[ "$copied" -eq 0 ]]; then
+    echo "Error: no genome directories found — check DB path and column name." >&2
+    exit 1
+fi
+
+
+tar --zstd \
+    -C "$DB" \
+    --transform 's,^,cds/,' \
+    -cf "${OUT}.tar.zst" \
+    --files-from="$FILES_LIST"
 
 echo "Archive written to ${OUT}.tar.zst"

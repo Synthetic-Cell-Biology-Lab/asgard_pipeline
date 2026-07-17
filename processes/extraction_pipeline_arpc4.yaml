@@ -51,6 +51,7 @@ run:
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  protein_name: aprc4
   cores: 24
   reason: To perform phylogenetic analysis for actin
 inputs:

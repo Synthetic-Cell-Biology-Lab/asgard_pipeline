@@ -12,6 +12,7 @@ import glob
 shell.executable("/bin/bash")
 
 # Expect config from CLI
+# syncing nested config inputs with non nested (to be phased out)
 
 def _cfg_get(path, default=None):
     cur = config
@@ -35,7 +36,6 @@ def _cfg_sync(flat_key, nested_path, default=None):
         config[flat_key] = default
 
 
-_cfg_sync("run_id", ["run", "id"])
 _cfg_sync("base_dir", ["run", "base_dir"])
 _cfg_sync("env_dir", ["run", "env_dir"])
 _cfg_sync("log_dir", ["run", "log_dir"])
@@ -46,13 +46,7 @@ _cfg_sync("raw_database", ["inputs", "raw_database"])
 _cfg_sync("genome_file", ["inputs", "genome_file"])
 _cfg_sync("protein_file", ["inputs", "protein_file"])
 _cfg_sync("fasta_file", ["inputs", "fasta_file"])
-_cfg_sync("parse_ips", ["modes", "parse_ips", "enabled"])
-_cfg_sync("hmmsearch", ["modes", "hmmsearch", "enabled"])
-_cfg_sync("from_manual", ["modes", "from_manual", "enabled"])
 _cfg_sync("from_database", ["modes", "from_database", "enabled"])
-_cfg_sync("from_existing_folder", ["modes", "from_existing_folder", "enabled"])
-_cfg_sync("search_string", ["modes", "search", "search_string"])
-_cfg_sync("rstring", ["modes", "search", "rstring"])
 _cfg_sync("phylogeny_threads", ["phylogeny", "threads"])
 _cfg_sync("run_itol_upload", ["phylogeny", "run_itol_upload"])
 _cfg_sync("itol_project", ["phylogeny", "itol_project"])
@@ -64,24 +58,29 @@ _cfg_sync("PLOT_PROTEINS_PRESENCE", ["plot", "proteins_presence"])
 _cfg_sync("ymin", ["plot", "ymin"])
 _cfg_sync("ymax", ["plot", "ymax"])
 
+# throw error if no config
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
-PROTEIN = config["protein_name"]
+
+# Name of the protein to define the output directory
+PROTEIN = config["run"]["protein_name"]
 
 LOG = config['pipeline_log']
 
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-RUN_ID = config.get("run_id", TIMESTAMP)
+RUN_ID = config.get("run").get("id", TIMESTAMP)
 
+# Define the paths for output
 BASE_DIR = os.getcwd()
-CURRENT_DIR = config.get('base_dir', workflow.basedir)
+CURRENT_DIR = config.get(run, {}).get('base_dir', workflow.basedir)
 RESULT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{RUN_ID}"
 EXPLORATION_DIR = f"{RESULT_DIR}/extraction_exploration"
 PHYLO_DIR = f"{RESULT_DIR}/final_phylogeny"
 SSN_DIR =  f"{RESULT_DIR}/Sequence_similarity_network"
 LOG_DIR = f"{RESULT_DIR}/Logs"
 BENCHMARK_DIR = f"{RESULT_DIR}/benchmark_dir"
+ENV_DIR = config.get("run", [])['env_dir']
 
 # Create directories
 os.makedirs(RESULT_DIR, exist_ok=True)
@@ -91,30 +90,41 @@ os.makedirs(LOG_DIR, exist_ok = True)
 os.makedirs(BENCHMARK_DIR, exist_ok = True)
 
 # Include rule definitions
+"""
+This set of rules define the method of extracting proteins from 
+the database.
+Parse_ips: obtains proteins from string searches of Interproscan desc in collated
+Hmmsearch: searches based on ids present in interproscan output
+From_manual: retrieves the proteins from previously defined manual annotation in collated protein_file csv
+from_fasta_csv: inherits the sequences from a given csv and fasta file.
+"""
 
-if config.get("parse_ips", False):
-    include: "../phylogeny_pipeline/rules/parse_ips.smk"
-elif config.get("hmmsearch", False):
-    include: "../phylogeny_pipeline/rules/hmmsearch.smk"
-elif config.get("from_manual", False):
-    include: "../phylogeny_pipeline/rules/from_manual.smk"
-elif config.get("from_fasta_csv", False):
-    include: "../phylogeny_pipeline/rules/from_fasta_and_csv.smk"
+if config.get("modes", {}).get("parse_ips", False):
+    include: "../rules/parse_ips.smk"
+elif config.get("modes", {}).get("hmmsearch", False):
+    include: "../rules/hmmsearch.smk"
+elif config.get("modes", {}).get("from_manual", False):
+    include: "../rules/from_manual.smk"
+elif config.get("modes", {}).get("from_fasta_csv", False):
+    include: "../rules/from_fasta_and_csv.smk"
 else:
     print("Must include atleast one mode of id extraction")
     sys.exit()
 
 
+"""
+Adds the rules present in exploration and ssn_3 snakemake files.
 
-include: "../phylogeny_pipeline/rules/exploration.smk"
-include: "../phylogeny_pipeline/rules/ssn_3.smk"
+"""
+include: "../rules/exploration.smk"
+include: "../rules/ssn_3.smk"
 ########################################
 # Final Target
 ########################################
 FINAL_TARGETS = [
     f"{RESULT_DIR}/phylogeny_pipeline.log",
     f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
-    expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("copy_to_windows", False) else [],
+    expand(f"{SSN_DIR}/copied_to_windows.flag") if config.get("SSN", {}).get("copy_to_windows", False) else [],
     f"{SSN_DIR}/{PROTEIN}.clusters.csv",
     f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
     f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg",
@@ -126,22 +136,20 @@ FINAL_TARGETS = [
 FINAL_TARGETS.extend(
     expand(
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg",
-        level=config.get("PLOT_TAXON_LEVELS")
+        level=config.get("plot")("taxon_levels")
     )
 )
 
 FINAL_TARGETS.extend(
     expand(
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg",
-        level=config.get("PLOT_TAXON_LEVELS")
+        level=config.get("plot")("taxon_levels")
     )
 )
 
 
 FINAL_TARGETS.extend(
-    expand(
-        f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
-    )
+    f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg"
 )
 
 
@@ -194,13 +202,13 @@ rule protein_copy_heatmap_unreviewed:
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg"
 
     params:
-        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
+        proteins = config.get("plot", []).get("proteins_presence", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
 
     wildcard_constraints:
-        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
+        level="|".join(config.get("plot", []).get("taxon_levels", ["class"]))
     
     conda: 
-        f"{config['env_dir']}/bio-r.yaml"
+        f"{ENV_DIR}/bio-r.yaml"
 
     shell:
         """
@@ -223,11 +231,11 @@ rule protein_coencoding_heatmap_unreviewed:
         cond = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_cond.unr.svg"
 
     params:
-        proteins = config.get("PLOT_PROTEINS_PRESENCE", ["FtsZ1","FtsZ2","CetZ","Tubulin"]),
-        group_col = config.get("PLOT_TAXON_LEVEL", "class")
+        proteins = config.get("plot", []).get("proteins_presence", ["FtsZ1","FtsZ2","CetZ","Tubulin"])
+        group_col = config.get("plot", []).get("taxon_levels", "class")
 
     conda:
-        f"{config['env_dir']}/bio-r.yaml"
+        f"{ENV_DIR}/bio-r.yaml"
 
     shell:
         """
@@ -249,24 +257,24 @@ rule plot_taxa:
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg"
 
     params:
-        y = config.get("PLOT_Y_COLUMN","protein_length"),
-        filter_col = config.get("PLOT_FILTER_COLUMN", "Manual_annotation"),
-        filter_vals = config.get("PLOT_FILTER_VALS", ['FtsZ1','FtsZ2','CetZ','Tubulin']),
-        ymin = config['ymin'],
-        ymax = config['ymax'], 
-        dual_vals = config.get("PLOT_DUAL_PROTEINS", ['FtsZ1','FtsZ2']),
+        y = config.get("plot", []).get("y_column","protein_length"),
+        filter_col = config.get("plot",[]).get("filter_column", "Manual_annotation"),
+        filter_vals = config.get("plot", []).get("filter_values", ['FtsZ1','FtsZ2','CetZ','Tubulin']),
+        ymin = config.get("plot", []).get("ymin", 0),
+        ymax = config.get("plot", []).get("ymax", 0), 
+        dual_vals = config.get("plot", []).get("dual_proteins", ['FtsZ1','FtsZ2']),
         dual_arg = lambda wildcards: (
-            "--dual " + " ".join(config.get("PLOT_DUAL_PROTEINS", []))
-            if config.get("PLOT_DUAL_PROTEINS", [])
+            "--dual " + " ".join(config.get("plot",[]).get("dual_proteins", []))
+            if config.get("plot", []).get("dual_proteins", [])
             else ""
         )
     
     conda: 
-        f"{config['env_dir']}/bio-r.yaml"
+        f"{ENV_DIR}/bio-r.yaml"
 
 
     wildcard_constraints:
-        level="|".join(config.get("PLOT_TAXON_LEVELS", ["class"]))
+        level="|".join(config.get('plot').get("taxon_levels", ["class"]))
 
     shell:
         """

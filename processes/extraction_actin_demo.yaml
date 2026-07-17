@@ -1,6 +1,6 @@
 ---
 pipeline: extraction_pipeline
-run_id: actin_demo
+run_id: actin_run_demo_2
 base_dir: "/home/anirudh/asgard_pipeline"
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
@@ -13,11 +13,9 @@ rstring:
 taxon_level: phylum
 taxon_filter: Asgardarchaeota
 manual_annotation_filter:
-- Actin
-- Actin_zn
-- MreB_actin
+- demo
 
-hmmsearch: false
+
 RUN_SSN: true
 SSN_BITSCORES:
 - 50
@@ -36,17 +34,14 @@ ymin: 0
 ymax: 1000
 PLOT_FILTER_COLUMN: Manual_annotation
 PLOT_FILTER_VALS: &1
-- Actin
-- Actin_zn
-- MreB_actin
+- demo
 PLOT_TAXON_LEVELS: &2
 - phylum
 - class
 - order
 PLOT_PROTEINS_PRESENCE: &3
-- Actin
-- Actin_zn
-- MreB_actin
+- demo
+
 phylogeny_threads: 12
 run_itol_upload: true
 itol_project: Asgard
@@ -73,8 +68,8 @@ modes:
   from_manual:
     enabled: true
   search:
-    search_string: actin
-    rstring:
+    search_string: 
+    rstring: \bactin\b
 plot:
   y_column: protein_length
   filter_column: Manual_annotation

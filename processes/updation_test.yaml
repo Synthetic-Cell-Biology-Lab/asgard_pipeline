@@ -1,6 +1,6 @@
 pipeline: updation
 reason: "test run 4"
-cores: 16
+cores: 12
 log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
 run_id: example_run
 env_dir: "/home/anirudh/asgard_pipeline/bin/envs"

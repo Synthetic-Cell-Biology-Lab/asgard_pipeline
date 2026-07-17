@@ -1,20 +1,29 @@
 ########################################
 # Parse IPS
 ########################################
+"""
+USED TO RETRIEVE PROTEINS GIVEN A DOMAIN
+This smk parses the interproscan collated result parquet and retrieves proteins 
+that match the given constraints of the search term
+The search term can be in regex or regular search. This searches for the search term in the
+sig_desc column of the collated database
+
+"""
+
 
 rule parse_ips:
     input:
-        database     = config["database"],      # protein_summary parquet (ipr_desc aggregated)
-        raw_database = config["raw_database"],  # raw InterPro parquet (all analyses)
+        database     = config['inputs']["database"],      # protein_summary parquet (ipr_desc aggregated)
+        raw_database = config['inputs']["raw_database"],  # raw InterPro parquet (all analyses)
     output:
         outfile     = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv",
         protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
         itol_dir    = directory(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains"),
     params:
-        search_string = config.get("search_string", None),
-        rstring       = config.get("rstring", None),
+        search_string = config.get("modes", {}).get("search", {}).get('search_string', None), # effectively the same as config['modes']['search']['search_string']
+        rstring       = config.get("modes", {}).get("search", {}).get("rstring", None),
     conda:
-        f"{config['env_dir']}/duckdb_handler.yaml"
+        f"{ENV_DIR}/duckdb_handler.yaml"
     message:
         """
         ===============================
@@ -36,19 +45,19 @@ rule parse_ips:
 
 rule merge_file:
     input:
-        protein_file = config["protein_file"],
-        fasta = config["fasta_file"],
+        protein_file = config['inputs']["protein_file"],
+        fasta = config['inputs']["fasta_file"],
         protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
-        genome_file = config['genome_file'],
+        genome_file = config['inputs']['genome_file'],
         
     output:
         outfasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
         protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
     params:
-        remove_hypotheticals = config.get("remove_hypotheticals", False),
-        protein_name = config['protein_name']
+        remove_hypotheticals = config.get("modes", {}).get("parse_ips", {}).get("remove_hypotheticals", False),
+        protein_name = config['run']['protein_name']
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     message:
         """
         ===============================

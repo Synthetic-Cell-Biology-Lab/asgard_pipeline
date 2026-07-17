@@ -32,23 +32,26 @@ if [ ! -f "$CONFIG_FILE" ]; then
   exit 1
 fi
 
-# -------------------------------
-# YAML reader helper
-# -------------------------------
 
-read_config_value () {
-python - <<EOF
-import yaml
+read_config_values () {
+python3 - "$@" <<'EOF'
+import sys, yaml
 
-with open("$CONFIG_FILE") as f:
+config_file = sys.argv[1]
+keys = sys.argv[2:]
+
+with open(config_file) as f:
     cfg = yaml.safe_load(f) or {}
 
-value = cfg.get("$1", "")
-
-if value is None:
-    value = ""
-
-print(value)
+for k in keys:
+    value = cfg
+    for part in k.split("."):
+        if isinstance(value, dict):
+            value = value.get(part)
+        else:
+            value = None
+            break
+    print(value if value is not None else "")
 EOF
 }
 
@@ -56,13 +59,15 @@ EOF
 # Read config values
 # -------------------------------
 
-PIPELINE=$(read_config_value pipeline)
-LOG_DIR=$(read_config_value log_dir)
-RUN_REASON=$(read_config_value reason)
-CORES=$(read_config_value cores)
-RUN_ID=$(read_config_value run_id)
-PARENT_DIR=$(read_config_value parent_dir)
-PROTEIN=$(read_config_value protein_name)
+mapfile -t VALUES < <(read_config_values "$CONFIG_FILE" run.pipeline run.log_dir run.reason run.cores run.id run.parent_dir run.protein_name)
+
+PIPELINE="${VALUES[0]}"
+LOG_DIR="${VALUES[1]}"
+RUN_REASON="${VALUES[2]}"
+CORES="${VALUES[3]}"
+RUN_ID="${VALUES[4]}"
+PARENT_DIR="${VALUES[5]}"
+PROTEIN="${VALUES[6]}"
 
 WORKING_DIR="$PWD"
 
@@ -205,7 +210,6 @@ if ! snakemake \
     --rerun-incomplete \
     --cores "$CORES" \
     --printshellcmds \
-    --conda-frontend conda \
     2>&1 | tee -a "$LOG_FILE"
 then
     STATUS="FAILED"

@@ -5,6 +5,10 @@ envvars:
 # Sequence Length Histogram
 ########################################
 
+
+# Defines if the final tree needs to be rooted using madroot tool
+# Yet to be functional, MadRoot requires the sequences to be deduplicated
+# which is not done as iqtree handles duplicates
 def get_final_tree(wc):
     if config.get("phylogeny", []).get("madroot", False):
         return f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile"
@@ -12,7 +16,7 @@ def get_final_tree(wc):
         return f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile"
 
 
-
+# gives a length analysis of the protein set
 rule length_histogram:
     input:
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
@@ -20,7 +24,7 @@ rule length_histogram:
         plot = f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
         split_dir = directory(f"{EXPLORATION_DIR}/{PROTEIN}_length_bins")
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     message:
         """
         ==========================================
@@ -37,14 +41,14 @@ rule length_histogram:
 
 
 
-
+# plots the counts of the genomes in different classes
 rule taxa_counts:
     input:
         csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
     output:
         plot = f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
     conda:
-        f"{config['env_dir']}/bio-r.yaml"
+        f"{ENV_DIR}/bio-r.yaml"
     message:
         """
         ==========================================
@@ -71,9 +75,9 @@ rule exploratory_fasttree:
     output:
         tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
         msa = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.aligned.fasta"
-    threads: config.get("phylogeny_threads", 8)
+    threads: config.get("phylogeny", {}).get("threads", 8)
     conda:
-        f"{config['env_dir']}/phylogeny.yaml"
+        f"{ENV_DIR}/phylogeny.yaml"
     params:
         prefix = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree"
     message:
@@ -94,7 +98,7 @@ rule exploratory_fasttree:
 ########################################
 # Generate iTOL Colorstrip
 ########################################
-
+# generates color strips for headers of the protein sequences
 rule itol_colorstrip:
     input:
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
@@ -108,7 +112,8 @@ rule itol_colorstrip:
             "header"
         """
 
-
+# compiles the dataframe that is required to be passed to table2itol to get 
+# all the annotation files required for the visualization
 rule df_for_annotation:
     input: 
         fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta", 
@@ -118,9 +123,9 @@ rule df_for_annotation:
     output:
         annot_csv = f"{PHYLO_DIR}/{PROTEIN}.annot.csv"
     params:
-        seq_id = config.get("LOCUS_TAG", "locus_tag")
+        seq_id = config.get("run", []).get("LOCUS_TAG", "locus_tag")
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     shell:
         """
         python {CURRENT_DIR}/bin/units/get_annotation_csv.py \
@@ -139,7 +144,7 @@ rule msa_to_itol:
     output:
         itol_msa = f"{PHYLO_DIR}/itol_msa.txt"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     shell:
         """
         python {CURRENT_DIR}/bin/units/msa_to_itol_dataset.py \
@@ -154,9 +159,9 @@ rule table2itol:
         annotation_dir = directory(f"{PHYLO_DIR}/annotation"),    
         done_annot = touch(f"{PHYLO_DIR}/annotation.done.flag")
     conda:
-        f"{config['env_dir']}/bio-r.yaml"
+        f"{ENV_DIR}/bio-r.yaml"
     params:
-        LOCUS_TAG = config.get("LOCUS_TAG", "locus_tag")
+        LOCUS_TAG = config.get('run', []).get("LOCUS_TAG", "locus_tag")
     shell:
         """
         mkdir -p {output.annotation_dir}
@@ -177,9 +182,9 @@ rule madroot:
     output:
         rooted_tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.rooted.treefile"
 
-    threads: config.get("phylogeny_threads", 8)
+    threads: config.get("phylogeny", []).get("threads", 8)
     conda:
-        f"{config['env_dir']}/phylogeny.yaml"
+        f"{ENV_DIR}/phylogeny.yaml"
     params:
         prefix = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree"
     message:
@@ -214,7 +219,7 @@ rule upload_to_itol:
 
     params:
         project   = config.get("itol_project", "Asgard"),
-        tree_name = f"fast_{config.get('run_id', 'run')}_{PROTEIN}",
+        tree_name = f"fast_{config.get('run', [])('id', 'run')}_{PROTEIN}",
         all_annots = lambda wildcards, input: (
             sorted(glob.glob(f"{PHYLO_DIR}/annotation/*.txt"))
             + ([input.colorstrip])

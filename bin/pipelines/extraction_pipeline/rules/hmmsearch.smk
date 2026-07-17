@@ -1,14 +1,14 @@
 rule ips_acc_parse:
     input:
-        database     = config["raw_database"],  # raw InterPro parquet (all analyses)
+        database     = config['inputs']["raw_database"],  # raw InterPro parquet (all analyses)
     output:
         outfile     = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
         itol_dir    = directory(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains"),
         matching_tsv = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv"
     params:
-        acc=config['acc_groups']
+        acc=config['modes']['hmmsearch']['acc_groups']
     conda:
-        f"{config['env_dir']}/duckdb_handler.yaml"
+        f"{ENV_DIR}/duckdb_handler.yaml"
     message:
         """
         ===============================
@@ -27,19 +27,19 @@ rule ips_acc_parse:
 
 rule merge_file:
     input:
-        protein_file = config["protein_file"],
-        fasta = config["fasta_file"],
+        protein_file = config['inputs']["protein_file"],
+        fasta = config['inputs']["fasta_file"],
         protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
-        genome_file = config['genome_file'],
+        genome_file = config['inputs']['genome_file'],
         
     output:
         outfasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
         protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
     params:
-        remove_hypotheticals = config.get("remove_hypotheticals", False),
-        protein_name = config['protein_name']
+        remove_hypotheticals = config['modes']['parse_ips'].get("remove_hypotheticals", False),
+        protein_name = config['run']['protein_name']
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     message:
         """
         ===============================

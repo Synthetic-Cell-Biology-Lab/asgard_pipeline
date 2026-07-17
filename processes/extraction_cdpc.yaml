@@ -1,0 +1,76 @@
+---
+run:
+  id: cdpc_run1
+  protein_name: cdpc
+  pipeline: extraction_pipeline
+  base_dir: "/home/anirudh/asgard_pipeline"
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  reason: To find cdpc proteins in asgard
+  cores: 24
+  taxon_level: phylum
+  taxon_filter: Asgardarchaeota
+  LOCUS_TAG: locus_tag
+SSN:
+  RUN_SSN: True
+  copy_to_windows: True
+  windows_path: "/mnt/e/ssn_outputs"
+  SSN_BITSCORES:
+  - 50
+  - 80
+  - 100
+  - 120
+  - 150
+  - 170
+  - 200
+  identity: 0.95
+  ssn_cores: 16
+  mem_mb: 16000
+  runtime_min: 120
+  evlaue: 1e-5
+  coverage: 0.6
+
+inputs:
+  database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/protein_summary.parquet"
+  raw_database: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/IPS/asgard_ips_results_feb5.parquet"
+  genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
+  protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
+  fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+modes:
+  parse_ips:
+    enabled: false
+    remove_hypotheticals: false
+    search:
+      search_string: 
+      rstring: 
+  hmmsearch:
+    enabled: True
+    acc_groups:
+    - PF01541
+  from_manual:
+    enabled: false        
+    manual_annotation_filter:
+  from_fasta_csv: 
+    enabled: false
+
+
+plot:
+  y_column: protein_length
+  filter_column: Manual_annotation
+  filter_values:
+  - cdpc
+  taxon_levels:
+  - phylum
+  - class
+  - order
+  
+  proteins_presence:
+  - cdpc
+
+  ymin: 0
+  ymax: 1500
+phylogeny:
+  threads: 12
+  run_itol_upload: True
+  itol_project: Asgard
+  madroot: false
