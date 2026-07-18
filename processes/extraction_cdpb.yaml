@@ -1,11 +1,11 @@
 run:
-  id: cdpc_run1
-  protein_name: cdpc
+  id: cdpb_run4
+  protein_name: cdpb
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: To find cdpc proteins in asgard
+  reason: To find cdpb proteins in asgard using IPS id search
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
@@ -45,11 +45,15 @@ modes:
   hmmsearch:
     enabled: true
     acc_groups:
-    - PF24368
+    - IPR027275 # PRC-barrel domain
+    - PF05239 # PRC-barrel domain
+    - PF24986 # RimM
+    - PF20259 # tRNA methyl transferase
+    - IPR011033 # like superfamily
   from_manual:
     enabled: false        
     manual_annotation_filter:
-    - cdpc
+    - cdpb
   from_fasta_csv: 
     enabled: false
 
@@ -58,14 +62,14 @@ plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - cdpc
+  - cdpb
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - cdpc
+  - cdpb
 
 
   ymin: 0

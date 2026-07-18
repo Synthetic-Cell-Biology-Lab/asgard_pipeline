@@ -12,7 +12,7 @@ rule ips_acc_parse:
     message:
         """
         ===============================
-        Running parse_ips
+        Parsing IPS accessions
         ===============================
         """
     shell:

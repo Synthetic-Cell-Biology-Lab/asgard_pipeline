@@ -1,6 +1,6 @@
 run:
-  id: cdpc_run1
-  protein_name: cdpc
+  id: seg_run1
+  protein_name: seg
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
@@ -43,13 +43,13 @@ modes:
       search_string: 
       rstring: 
   hmmsearch:
-    enabled: true
+    enabled: false
     acc_groups:
-    - PF24368
+    - PF01541
   from_manual:
-    enabled: false        
+    enabled: true        
     manual_annotation_filter:
-    - cdpc
+    - seg_putative
   from_fasta_csv: 
     enabled: false
 
@@ -58,14 +58,14 @@ plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - cdpc
+  - seg_putative
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - cdpc
+  - seg_putative
 
 
   ymin: 0
