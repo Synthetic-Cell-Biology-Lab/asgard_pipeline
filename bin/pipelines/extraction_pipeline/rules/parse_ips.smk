@@ -20,8 +20,8 @@ rule parse_ips:
         protein_ids = f"{EXPLORATION_DIR}/{PROTEIN}.ids",
         itol_dir    = directory(f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains"),
     params:
-        search_string = config.get("modes", {}).get("search", {}).get('search_string', None), # effectively the same as config['modes']['search']['search_string']
-        rstring       = config.get("modes", {}).get("search", {}).get("rstring", None),
+        search_string = config['modes']['parse_ips']['search']['search_string'], 
+        rstring       = config['modes']['parse_ips']['search']['rstring'],
     conda:
         f"{ENV_DIR}/duckdb_handler.yaml"
     message:
@@ -55,7 +55,9 @@ rule merge_file:
         protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
     params:
         remove_hypotheticals = config.get("modes", {}).get("parse_ips", {}).get("remove_hypotheticals", False),
-        protein_name = config['run']['protein_name']
+        protein_name = config['run']['protein_name'],
+        taxon_level = config['run'].get('taxon_level', 'phylum'),
+        taxon_filter = config['run'].get('taxon_filter', 'Asgardarchaeota')
     conda:
         f"{ENV_DIR}/Reg.yaml"
     message:

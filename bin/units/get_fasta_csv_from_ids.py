@@ -24,6 +24,8 @@ def get_args():
             "OUT_CSV": snakemake.output.protein_csv,
             "PROTEIN": snakemake.params.protein_name,
             "REMOVE_HYPOTHETICALS": snakemake.params.remove_hypotheticals,
+            "TAXON_LEVEL": snakemake.params.taxon_level,
+            "TAXON_FILTER": snakemake.params.taxon_filter,
         }
 
     # CLI mode
@@ -44,6 +46,8 @@ def get_args():
         type=lambda x: bool(strtobool(x)),
         default=False,
     )
+    parser.add_argument("--taxon_level")
+    parser.add_argument("--taxon_filter")
 
     args = parser.parse_args()
 
@@ -56,6 +60,8 @@ def get_args():
         "OUT_CSV": args.outcsv,
         "PROTEIN": args.protein_name,
         "REMOVE_HYPOTHETICALS": args.remove_hypotheticals,
+        "TAXON_LEVEL": args.taxon_level,
+        "TAXON_FILTER": args.taxon_filter,
     }
 
 
@@ -70,6 +76,14 @@ OUT_FASTA = cfg["OUT_FASTA"]
 OUT_CSV = cfg["OUT_CSV"]
 PROTEIN = cfg["PROTEIN"]
 REMOVE_HYPOTHETICALS = cfg["REMOVE_HYPOTHETICALS"]
+TAXON_LEVEL = cfg["TAXON_LEVEL"]
+TAXON_FILTER = cfg["TAXON_FILTER"]
+
+
+if bool(TAXON_LEVEL) ^ bool(TAXON_FILTER):
+    raise ValueError(
+        "Taxon filtering requires both --taxon_level and --taxon_filter inputs."
+    )
 
 
 # -------------------------------
@@ -140,9 +154,20 @@ filtered_df = merged[merged["locus_tag"].isin(protein_ids)]
 if filtered_df.empty:
     print("⚠️ No matching rows in CSV.")
 
+
 filtered_df["Manual_annotation"] = PROTEIN
 
-filtered_df.to_csv(OUT_CSV, index=False)
+if TAXON_FILTER and TAXON_LEVEL:
+    print("Before Taxon filtering: ", filtered_df.shape)
+
+    tax_filtered = filtered_df[filtered_df[f"{TAXON_LEVEL}"] == f"{TAXON_FILTER}"]
+
+    print("After Taxon filtering: ", tax_filtered.shape)
+
+    tax_filtered.to_csv(OUT_CSV, index=False)
+else:
+    filtered_df.to_csv(OUT_CSV, index=False)
+
 
 print(f"✅ CSV written → {OUT_CSV}")
 print("🎉 Extraction complete.")

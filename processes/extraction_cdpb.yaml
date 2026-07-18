@@ -1,18 +1,18 @@
 run:
-  id: ftsz_run_with_cdpc
-  protein_name: ftsz
+  id: cdpb_run4
+  protein_name: cdpb
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: To plot a joint presence matrix of tubulin homologs and ftsz adapters
+  reason: To find cdpb proteins in asgard using IPS id search
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
   LOCUS_TAG: locus_tag
 SSN:
-  RUN_SSN: false
-  copy_to_windows: false
+  RUN_SSN: True
+  copy_to_windows: True
   windows_path: "/mnt/e/ssn_outputs"
   SSN_BITSCORES:
   - 50
@@ -43,39 +43,38 @@ modes:
       search_string: 
       rstring: 
   hmmsearch:
-    enabled: false
+    enabled: true
     acc_groups:
-    - PF01541
+    - IPR027275 # PRC-barrel domain
+    - PF05239 # PRC-barrel domain
+    - PF24986 # RimM
+    - PF20259 # tRNA methyl transferase
+    - IPR011033 # like superfamily
   from_manual:
-    enabled: true        
-    manual_annotation_filter: &1
-    - cdpc_putative
-    - FtsZ1
-    - FtsZ2
-    - CetZ
-    - CetZ2
-    - Tubulin
-    - SepF
-    - DipA
-    - DipB
-    - DipC
+    enabled: false        
+    manual_annotation_filter:
+    - cdpb
   from_fasta_csv: 
     enabled: false
+
+
 plot:
   y_column: protein_length
   filter_column: Manual_annotation
-  filter_values: *1
+  filter_values:
+  - cdpb
   taxon_levels:
   - phylum
   - class
   - order
   
-  proteins_presence: *1
+  proteins_presence:
+  - cdpb
+
 
   ymin: 0
   ymax: 1500
 phylogeny:
-  run: false
   threads: 12
   run_itol_upload: false
   itol_project: Asgard

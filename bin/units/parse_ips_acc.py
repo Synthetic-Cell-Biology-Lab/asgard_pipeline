@@ -123,9 +123,20 @@ def main():
         CREATE TABLE raw AS
         SELECT * FROM read_parquet('{args.parquet}')
     """)
+    pfam = [acc for acc in args.acc if acc.startswith("PF")]
+    ipr = [acc for acc in args.acc if acc.startswith("IPR")]
+    clauses = []
+    params = []
 
-    placeholders = " OR ".join(["sig_acc LIKE ?" for _ in args.acc])
-    params = [f"%{acc}%" for acc in args.acc]
+    if pfam:
+        clauses.append(f"sig_acc IN ({','.join(['?'] * len(pfam))})")
+        params.extend(pfam)
+
+    if ipr:
+        clauses.append(f"ipr_acc IN ({','.join(['?'] * len(ipr))})")
+        params.extend(ipr)
+
+    where_clauses = " OR ".join(clauses)
 
     print("🔍 Finding proteins matching the search term(s)...")
     con.execute(
@@ -133,7 +144,7 @@ def main():
         CREATE TABLE matching_proteins AS
         SELECT DISTINCT protein
         FROM raw
-        WHERE {placeholders}
+        WHERE {where_clauses}
         """,
         params,
     )
