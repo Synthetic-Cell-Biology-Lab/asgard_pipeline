@@ -1,76 +1,32 @@
 
-
-def _cfg_get(path, default=None):
-    cur = config
-    for key in path:
-        if not isinstance(cur, dict) or key not in cur:
-            return default
-        cur = cur[key]
-    return cur
-
-
-def _cfg_sync(flat_key, nested_path, default=None):
-    nested_val = _cfg_get(nested_path, None)
-    if nested_val is not None and flat_key not in config:
-        config[flat_key] = nested_val
-    elif flat_key in config and nested_val is None:
-        cur = config
-        for key in nested_path[:-1]:
-            cur = cur.setdefault(key, {})
-        cur[nested_path[-1]] = config[flat_key]
-    elif flat_key not in config and nested_val is None and default is not None:
-        config[flat_key] = default
-
-
-_cfg_sync("run_id", ["run", "id"])
-_cfg_sync("base_dir", ["run", "base_dir"])
-_cfg_sync("env_dir", ["run", "env_dir"])
-_cfg_sync("log_dir", ["run", "log_dir"])
-_cfg_sync("pipeline_log", ["run", "pipeline_log"])
-_cfg_sync("cores", ["run", "cores"])
-_cfg_sync("database", ["inputs", "database"])
-_cfg_sync("raw_database", ["inputs", "raw_database"])
-_cfg_sync("genome_file", ["inputs", "genome_file"])
-_cfg_sync("protein_file", ["inputs", "protein_file"])
-_cfg_sync("fasta_file", ["inputs", "fasta_file"])
-_cfg_sync("parse_ips", ["modes", "parse_ips", "enabled"])
-_cfg_sync("hmmsearch", ["modes", "hmmsearch", "enabled"])
-_cfg_sync("from_manual", ["modes", "from_manual", "enabled"])
-_cfg_sync("from_database", ["modes", "from_database", "enabled"])
-_cfg_sync("from_existing_folder", ["modes", "from_existing_folder", "enabled"])
-_cfg_sync("search_string", ["modes", "search", "search_string"])
-_cfg_sync("rstring", ["modes", "search", "rstring"])
-_cfg_sync("phylogeny_threads", ["phylogeny", "threads"])
-_cfg_sync("run_itol_upload", ["phylogeny", "run_itol_upload"])
-_cfg_sync("itol_project", ["phylogeny", "itol_project"])
-_cfg_sync("PLOT_Y_COLUMN", ["plot", "y_column"])
-_cfg_sync("PLOT_FILTER_COLUMN", ["plot", "filter_column"])
-_cfg_sync("PLOT_FILTER_VALS", ["plot", "filter_values"])
-_cfg_sync("PLOT_TAXON_LEVELS", ["plot", "taxon_levels"])
-_cfg_sync("PLOT_PROTEINS_PRESENCE", ["plot", "proteins_presence"])
-_cfg_sync("ymin", ["plot", "ymin"])
-_cfg_sync("ymax", ["plot", "ymax"])
 import os
 from pathlib import Path
+from datetime import datetime
 
-configfile: "config.yaml"
+shell.executable("/bin/bash")
+
+if not config:
+    raise ValueError("no config provided, use --configfile")
 
 # -------------------------------
 # CONFIG
 # -------------------------------
-OUTDIR = Path(config["output"]["dir"])
-PROJECT_NAME = config['project']['title']
 
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+RUN_ID = config.get("run").get("id", TIMESTAMP)
 
-RUN_ID = config['run_id']
+BASE_DIR = os.getcwd()
+PROJECT_NAME = config['run']['protein_name']
+CURRENT_DIR = config.get("run", {}).get('base_dir', workflow.basedir)
+RESULT_DIR = Path(f"{BASE_DIR}/database/protein_sets/{PROJECT_NAME}/{RUN_ID}")
 
-RESULT_DIR = OUTDIR / PROJECT_NAME / f"{RUN_ID}"/"hmmsearch"
+RESULT_DIR = RESULT_DIR /"hmmsearch"
 
-PFAM_DB = config["pfam"]["hmm_db"]
-PFAM_NAMES = config["pfam"]["names"]
-DB = config["database"]["fasta"]
-ASCOGS = config["database"]["AsCOGs"]
-ASCOGS_TSV = config['database']['ascogs_tsv']
+PFAM_DB = config["inputs"]["pfam"]["hmm_db"]
+PFAM_NAMES = config["inputs"]["pfam"]["names"]
+DB = config["inputs"]["database"]["fasta"]
+ASCOGS = config["inputs"]["database"]["AsCOGs"]
+ASCOGS_TSV = config["inputs"]['database']['ascogs_tsv']
 
 EVALUE = config["params"]["evalue"]
 CPUS = config["params"]["cpus"]
@@ -105,7 +61,7 @@ rule download_pfam:
     output:
         PFAM_DB
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     shell:
         """
         mkdir -p $(dirname {output})
@@ -122,7 +78,7 @@ rule press_pfam:
     output:
         PFAM_DB + ".h3m"
     conda:
-        f"{config['env_dir']}/hmmer.yaml"
+        f"{config["run"]['env_dir']}/hmmer.yaml"
     shell:
         """
         hmmpress {input}
@@ -137,7 +93,7 @@ rule build_pfam_mapping:
     output:
         MAPPING_FILE
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     shell:
         """
         mkdir -p {RESULT_DIR}
@@ -156,10 +112,10 @@ rule resolve_pfam_ids:
         PFAM_IDS_FILE,
         ASCOG_IDS_FILE
     params:
-        names=config["pfam"].get("names", []),
-        ids=config["pfam"].get("ids", [])
+        names=config["inputs"]["pfam"].get("names", []),
+        ids=config["inputs"]["pfam"].get("ids", [])
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     run:
         import pandas as pd
 
@@ -238,7 +194,7 @@ rule make_cog_hmms:
         directory(f"{RESULT_DIR}/temp/{RUN_ID}/"),
         f"{RESULT_DIR}/temp/{RUN_ID}.done"
     conda:
-        f"{config['env_dir']}/hmmer.yaml"
+        f"{config["run"]['env_dir']}/hmmer.yaml"
     shell:
         r"""
         mkdir -p {output[0]}
@@ -289,7 +245,7 @@ rule extract_hmms:
     output:
         f"{RESULT_DIR}/hmms/{RUN_ID}.hmm"
     conda:
-        f"{config['env_dir']}/hmmer.yaml"
+        f"{config["run"]['env_dir']}/hmmer.yaml"
     shell:
         r"""
         mkdir -p "{RESULT_DIR}/hmms"
@@ -322,7 +278,7 @@ rule press_combined:
     output:
         f"{RESULT_DIR}/hmms/{RUN_ID}.hmm.h3m"
     conda:
-        f"{config['env_dir']}/hmmer.yaml"
+        f"{config["run"]['env_dir']}/hmmer.yaml"
     shell:
         """
         hmmpress {input}
@@ -339,7 +295,7 @@ rule hmmsearch:
         f"{RESULT_DIR}/domtblout/{RUN_ID}.domtblout"
     threads: CPUS
     conda:
-        f"{config['env_dir']}/hmmer.yaml"
+        f"{config["run"]['env_dir']}/hmmer.yaml"
     shell:
         """
         mkdir -p {RESULT_DIR}/domtblout
@@ -358,7 +314,7 @@ rule parse_results:
     output:
         FINAL_CSV
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     shell:
         """
         mkdir -p {RESULT_DIR}/hits
@@ -376,7 +332,7 @@ rule filter_results:
         evalue=config.get("params", {}).get("evalue", 1e-3),
         min_coverage=config.get("params", {}).get("min_coverage", 0.7)
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     run:
         import pandas as pd
 
@@ -445,7 +401,7 @@ rule extract_hit_sequences:
     output:
         f"{RESULT_DIR}/hits/hit_sequences_{RUN_ID}.fasta"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     shell:
         """
         python bin/pipelines/hmmsearch_pipeline/scripts/extract_hits_fasta.py {input.csv} {input.fasta} {output}
@@ -472,11 +428,11 @@ rule review_gate:
 rule extract_genomic_sequences:
     input:
         review=f"{RESULT_DIR}/reviewed_accessions.tsv",
-        gbff=config["database"]["gbff"]
+        gbff=config["inputs"]["database"]["gbff"]
     output:
         directory(f"{RESULT_DIR}/sequences")
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     shell:
         """
         mkdir -p {output}
@@ -492,7 +448,7 @@ rule generate_pdf_report:
     output:
         f"{RESULT_DIR}/report/sequence_report_{RUN_ID}.pdf"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{config["run"]['env_dir']}/Reg.yaml"
     shell:
         """
         mkdir -p {RESULT_DIR}/report
