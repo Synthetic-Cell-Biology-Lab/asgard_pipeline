@@ -175,6 +175,9 @@ rule protein_copy_heatmap_unreviewed:
     wildcard_constraints:
         level="|".join(config.get("plot", []).get("taxon_levels", ["class"]))
     
+    log:
+        f"{LOG_DIR}/protein_copy_heatmap_unreviewed/{{level}}.log"
+    
     conda: 
         f"{ENV_DIR}/bio-r.yaml"
 
@@ -186,7 +189,8 @@ rule protein_copy_heatmap_unreviewed:
         genome_file \
         Manual_annotation \
         {output} \
-        --proteins {params.proteins:q}
+        --proteins {params.proteins:q} \
+        > {log} 2>&1
         """
 
 
