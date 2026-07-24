@@ -84,6 +84,110 @@ function LandingPage({ onChoose }) {
 }
 
 function BlastPanel({ onBack }) {
+  const [databases, setDatabases] = useState([])
+  const [blastDir, setBlastDir] = useState('')
+  const [program, setProgram] = useState('blastp')
+  const [database, setDatabase] = useState('')
+  const [query, setQuery] = useState('')
+  const [evalue, setEvalue] = useState('1e-5')
+  const [maxTargets, setMaxTargets] = useState(50)
+  const [search, setSearch] = useState(null)
+  const [logs, setLogs] = useState([])
+  const [hits, setHits] = useState([])
+  const [loadingDatabases, setLoadingDatabases] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState('')
+
+  const fetchBlastDatabases = useCallback(async () => {
+    setLoadingDatabases(true)
+    setError('')
+    try {
+      const res = await fetch(`${API}/blast/databases`)
+      const data = await res.json()
+      setDatabases(data.databases || [])
+      setBlastDir(data.dir || '')
+      setDatabase(current => current || data.databases?.[0]?.name || '')
+    } catch (e) {
+      setError(`Failed to load BLAST databases: ${e.message}`)
+      setDatabases([])
+    } finally {
+      setLoadingDatabases(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const loadBlastDatabases = async () => {
+      await fetchBlastDatabases()
+    }
+    loadBlastDatabases()
+  }, [fetchBlastDatabases])
+
+  const loadResults = async (searchId) => {
+    const res = await fetch(`${API}/blast/searches/${searchId}/results`)
+    if (!res.ok) return
+    const data = await res.json()
+    setHits(data.hits || [])
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setError('')
+    setLogs([])
+    setHits([])
+    setSearch(null)
+
+    if (!query.trim()) {
+      setError('Paste a FASTA sequence before starting a BLAST search.')
+      return
+    }
+    if (!database) {
+      setError('Select a BLAST database before starting a search.')
+      return
+    }
+
+    setRunning(true)
+    try {
+      const res = await fetch(`${API}/blast/searches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          database,
+          program,
+          evalue: Number(evalue),
+          max_targets: Number(maxTargets),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || res.statusText)
+      setSearch(data)
+
+      const es = new EventSource(`${API}/blast/searches/${data.id}/stream`)
+      es.onmessage = (msg) => {
+        const payload = JSON.parse(msg.data)
+        const type = payload.type || 'stdout'
+        const text = payload.line ?? payload.data ?? JSON.stringify(payload)
+        if (type === 'exit') {
+          setLogs(current => [...current, { type: 'exit', text }])
+          setRunning(false)
+          setSearch(current => current ? { ...current, status: text } : current)
+          es.close()
+          if (text === 'succeeded') loadResults(data.id)
+        } else {
+          setLogs(current => [...current, { type, text }])
+        }
+      }
+      es.onerror = () => {
+        setLogs(current => [...current, { type: 'error', text: 'Lost connection to backend.' }])
+        setRunning(false)
+        es.close()
+      }
+    } catch (e) {
+      setError(e.message)
+      setRunning(false)
+    }
+  }
+
   return (
     <main className="pipeline-panel focused-panel">
       <header className="sk-header">
@@ -93,6 +197,123 @@ function BlastPanel({ onBack }) {
           <p className="mono header-sub dim">Sequence search workspace</p>
         </div>
       </header>
+
+      <form className="card blast-form" onSubmit={handleSubmit}>
+        <div className="card-header">
+          <StepBadge n={1} active done={false} />
+          <span className="step-label">Query setup</span>
+          <button type="button" className="icon-btn" onClick={onBack} title="Back to landing">←</button>
+          <button type="button" className="icon-btn" onClick={fetchBlastDatabases} title="Refresh databases">↺</button>
+        </div>
+
+        {blastDir && <div className="config-dir mono dim">📁 {blastDir}</div>}
+        {loadingDatabases && <p className="dim">Loading BLAST databases…</p>}
+        {!loadingDatabases && databases.length === 0 && (
+          <p className="dim blast-empty">
+            No BLAST databases found. Add formatted BLAST database files under the directory above.
+          </p>
+        )}
+
+        <div className="blast-grid">
+          <label className="blast-field">
+            <span className="mono param-key">Program</span>
+            <select className="param-input" value={program} onChange={e => setProgram(e.target.value)}>
+              <option value="blastp">blastp</option>
+              <option value="blastn">blastn</option>
+              <option value="blastx">blastx</option>
+              <option value="tblastn">tblastn</option>
+              <option value="tblastx">tblastx</option>
+            </select>
+          </label>
+          <label className="blast-field">
+            <span className="mono param-key">Database</span>
+            <select className="param-input" value={database} onChange={e => setDatabase(e.target.value)}>
+              <option value="">Select a database</option>
+              {databases.map(db => (
+                <option key={db.name} value={db.name}>{db.name} ({db.type})</option>
+              ))}
+            </select>
+          </label>
+          <label className="blast-field">
+            <span className="mono param-key">E-value</span>
+            <input className="param-input" value={evalue} onChange={e => setEvalue(e.target.value)} />
+          </label>
+          <label className="blast-field">
+            <span className="mono param-key">Max hits</span>
+            <input className="param-input" type="number" min="1" value={maxTargets} onChange={e => setMaxTargets(e.target.value)} />
+          </label>
+        </div>
+
+        <label className="blast-field blast-query">
+          <span className="mono param-key">FASTA query</span>
+          <textarea
+            className="mono blast-textarea"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={">query\nMSEQUENCE..."}
+            rows={9}
+          />
+        </label>
+
+        {error && <p className="save-msg err-msg">{error}</p>}
+        <div className="save-row">
+          <button className="btn primary" type="submit" disabled={running || databases.length === 0}>
+            {running ? 'Searching…' : 'Run BLAST'}
+          </button>
+          <button className="btn" type="button" onClick={onBack}>Back to landing</button>
+          {search && <span className="mono dim run-config">search #{search.id.slice(0, 8)} · {search.status}</span>}
+        </div>
+      </form>
+
+      {logs.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <StepBadge n={2} active={running} done={!running && search?.status === 'succeeded'} />
+            <span className="step-label">Search output</span>
+          </div>
+          <LogViewer lines={logs} running={running} />
+        </div>
+      )}
+
+      {hits.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <StepBadge n={3} active done />
+            <span className="step-label">Results</span>
+            {search && (
+              <a className="btn" href={`${API}/blast/searches/${search.id}/download`}>
+                Download JSON
+              </a>
+            )}
+          </div>
+          <div className="blast-results-wrap">
+            <table className="blast-results">
+              <thead>
+                <tr>
+                  <th>Accession</th>
+                  <th>Title</th>
+                  <th>E-value</th>
+                  <th>Bitscore</th>
+                  <th>Identity</th>
+                  <th>Length</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hits.map((hit, idx) => (
+                  <tr key={`${hit.accession}-${idx}`}>
+                    <td className="mono">{hit.accession}</td>
+                    <td>{hit.title}</td>
+                    <td className="mono">{hit.evalue}</td>
+                    <td className="mono">{hit.bitscore}</td>
+                    <td className="mono">{hit.identity_pct ?? '—'}%</td>
+                    <td className="mono">{hit.alignment_length}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       <div className="card">
         <div className="card-header">
           <StepBadge n={1} active done={false} />

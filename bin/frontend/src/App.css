@@ -823,3 +823,73 @@ body {
   .landing-actions { grid-template-columns: 1fr; }
   .landing-page { padding: 1rem; }
 }
+
+/* ── BLAST search ─────────────────────────────────────── */
+
+.blast-form { display: flex; flex-direction: column; gap: 1rem; }
+
+.blast-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.blast-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.blast-query { margin-top: 0.25rem; }
+
+.blast-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 180px;
+  border: 0.5px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.blast-textarea:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.blast-empty { font-size: 12px; }
+
+.blast-results-wrap {
+  overflow-x: auto;
+}
+
+.blast-results {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.blast-results th,
+.blast-results td {
+  border-bottom: 0.5px solid var(--border);
+  padding: 0.65rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.blast-results th {
+  color: var(--purple-dark);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.blast-results td:nth-child(2) {
+  min-width: 260px;
+}
+
+@media (max-width: 768px) {
+  .blast-grid { grid-template-columns: 1fr; }
+}

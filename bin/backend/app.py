@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 import yaml
 import subprocess
+import shutil
 import json
 import uuid
 import threading
@@ -30,7 +31,11 @@ app.add_middleware(
 BASE_DIR      = Path(__file__).resolve().parents[2]
 DATABASE_DIR  = BASE_DIR / "database"
 RUN_PIPELINE  = BASE_DIR / "bin" / "run_pipeline.sh"
+BLAST_DB_DIR  = DATABASE_DIR / "blast"
+BLAST_RUN_DIR = DATABASE_DIR / "blast_runs"
 DATABASE_DIR.mkdir(parents=True, exist_ok=True)
+BLAST_DB_DIR.mkdir(parents=True, exist_ok=True)
+BLAST_RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 _state = {"configs_dir": BASE_DIR / "processes"}
 
@@ -48,6 +53,7 @@ def set_configs_dir(path: Path):
 set_configs_dir(get_configs_dir())
 
 RUNS: Dict[str, Dict[str, Any]] = {}
+BLAST_SEARCHES: Dict[str, Dict[str, Any]] = {}
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
@@ -75,6 +81,14 @@ class ConfigResponse(BaseModel):
 
 class RunCreateRequest(BaseModel):
     config: str
+
+class BlastSearchRequest(BaseModel):
+    query: str
+    database: str
+    program: str = "blastp"
+    evalue: float = 1e-5
+    max_targets: int = 50
+
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -194,6 +208,89 @@ def _list_yaml_files(directory: Path) -> List[ConfigFileInfo]:
     return items
 
 
+# ── BLAST helpers ─────────────────────────────────────────────────────────────
+
+def _safe_public_run(search: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in search.items() if k not in {"process", "logs", "query_path", "results_path"}}
+
+
+def _blast_db_type(suffix: str) -> str:
+    return "protein" if suffix in {".pin", ".psq", ".phr"} else "nucleotide"
+
+
+def _list_blast_databases() -> List[Dict[str, Any]]:
+    databases: Dict[str, Dict[str, Any]] = {}
+    for marker in BLAST_DB_DIR.glob("**/*"):
+        if marker.suffix.lower() not in {".pin", ".psq", ".phr", ".nin", ".nsq", ".nhr"}:
+            continue
+        prefix = marker.with_suffix("")
+        name = str(prefix.relative_to(BLAST_DB_DIR))
+        stat = marker.stat()
+        current = databases.setdefault(name, {
+            "name": name,
+            "path": str(prefix),
+            "type": _blast_db_type(marker.suffix.lower()),
+            "size": 0,
+            "mtime": stat.st_mtime,
+        })
+        current["size"] += stat.st_size
+        current["mtime"] = max(current["mtime"], stat.st_mtime)
+    return sorted(databases.values(), key=lambda item: item["name"].lower())
+
+
+def _resolve_blast_database(name: str) -> Path:
+    safe_name = name.strip().lstrip("/")
+    if not safe_name:
+        raise HTTPException(400, "BLAST database is required")
+    db_path = _safe_resolve(BLAST_DB_DIR, safe_name)
+    markers = [db_path.with_suffix(ext) for ext in (".pin", ".psq", ".phr", ".nin", ".nsq", ".nhr")]
+    if not any(marker.exists() for marker in markers):
+        raise HTTPException(404, f"BLAST database not found: {name}")
+    return db_path
+
+
+def _parse_blast_json(results_path: Path) -> List[Dict[str, Any]]:
+    if not results_path.exists() or not results_path.read_text(errors="replace").strip():
+        return []
+    data = json.loads(results_path.read_text())
+    reports = data.get("BlastOutput2", [])
+    hits = []
+    for report in reports:
+        search = report.get("report", {}).get("results", {}).get("search", {})
+        query_title = search.get("query_title") or search.get("query_id")
+        for hit in search.get("hits", []):
+            descriptions = hit.get("description", [{}])
+            description = descriptions[0] if descriptions else {}
+            hsps = hit.get("hsps", [])
+            best_hsp = hsps[0] if hsps else {}
+            align_len = best_hsp.get("align_len") or 0
+            identity = best_hsp.get("identity") or 0
+            identity_pct = round((identity / align_len) * 100, 2) if align_len else None
+            hits.append({
+                "query": query_title,
+                "accession": description.get("accession") or hit.get("id"),
+                "title": description.get("title") or hit.get("description", [{}])[0].get("title", ""),
+                "evalue": best_hsp.get("evalue"),
+                "bitscore": best_hsp.get("bit_score"),
+                "identity_pct": identity_pct,
+                "alignment_length": align_len,
+                "query_start": best_hsp.get("query_from"),
+                "query_end": best_hsp.get("query_to"),
+                "subject_start": best_hsp.get("hit_from"),
+                "subject_end": best_hsp.get("hit_to"),
+            })
+    return hits
+
+
+def _collect_blast_logs(search_id: str, process: subprocess.Popen):
+    search = BLAST_SEARCHES[search_id]
+    for line in process.stdout:
+        search["logs"].append({"ts": time.time(), "type": "stdout", "line": line.rstrip("\n")})
+    process.wait()
+    search["status"] = "succeeded" if process.returncode == 0 else "failed"
+    search["returncode"] = process.returncode
+
+
 # ── Config endpoints ──────────────────────────────────────────────────────────
 
 @app.post("/set-dir")
@@ -310,6 +407,123 @@ def download(path: str):
         open(target, "rb"),
         media_type=mimetypes.guess_type(str(target))[0] or "application/octet-stream"
     )
+
+
+# ── BLAST endpoints ───────────────────────────────────────────────────────────
+
+@app.get("/blast/databases")
+def list_blast_databases():
+    return {"databases": _list_blast_databases(), "dir": str(BLAST_DB_DIR)}
+
+
+@app.post("/blast/searches")
+def create_blast_search(req: BlastSearchRequest):
+    allowed_programs = {"blastp", "blastn", "blastx", "tblastn", "tblastx"}
+    if req.program not in allowed_programs:
+        raise HTTPException(400, f"Unsupported BLAST program: {req.program}")
+    if not shutil.which(req.program):
+        raise HTTPException(500, f"{req.program} is not installed or not on PATH")
+    if not req.query.strip():
+        raise HTTPException(400, "Query sequence is required")
+    if req.max_targets < 1:
+        raise HTTPException(400, "max_targets must be at least 1")
+
+    db_path = _resolve_blast_database(req.database)
+    search_id = str(uuid.uuid4())
+    run_dir = BLAST_RUN_DIR / search_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    query_path = run_dir / "query.fasta"
+    results_path = run_dir / "results.json"
+    query_path.write_text(req.query.strip() + "\n")
+
+    cmd = [
+        req.program,
+        "-query", str(query_path),
+        "-db", str(db_path),
+        "-evalue", str(req.evalue),
+        "-max_target_seqs", str(req.max_targets),
+        "-outfmt", "15",
+        "-out", str(results_path),
+    ]
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    BLAST_SEARCHES[search_id] = {
+        "id": search_id,
+        "status": "running",
+        "program": req.program,
+        "database": req.database,
+        "started_at": time.time(),
+        "pid": proc.pid,
+        "process": proc,
+        "query_path": str(query_path),
+        "results_path": str(results_path),
+        "returncode": None,
+        "logs": [{"ts": time.time(), "type": "info", "line": " ".join(cmd)}],
+    }
+
+    threading.Thread(target=_collect_blast_logs, args=(search_id, proc), daemon=True).start()
+    return _safe_public_run(BLAST_SEARCHES[search_id])
+
+
+@app.get("/blast/searches/{search_id}")
+def blast_search_status(search_id: str):
+    search = BLAST_SEARCHES.get(search_id)
+    if not search:
+        raise HTTPException(404, "BLAST search not found")
+    return _safe_public_run(search)
+
+
+@app.get("/blast/searches/{search_id}/stream")
+def blast_search_stream(search_id: str, offset: int = 0):
+    if search_id not in BLAST_SEARCHES:
+        raise HTTPException(404, "BLAST search not found")
+
+    def event_stream():
+        idx = offset
+        while True:
+            search = BLAST_SEARCHES.get(search_id)
+            if not search:
+                break
+            logs = search["logs"]
+            while idx < len(logs):
+                yield f"data: {json.dumps(logs[idx])}\n\n"
+                idx += 1
+            if search["status"] != "running" and idx >= len(logs):
+                yield f"data: {json.dumps({'type': 'exit', 'line': search['status'], 'ts': time.time()})}\n\n"
+                break
+            time.sleep(0.25)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/blast/searches/{search_id}/results")
+def blast_search_results(search_id: str):
+    search = BLAST_SEARCHES.get(search_id)
+    if not search:
+        raise HTTPException(404, "BLAST search not found")
+    results_path = Path(search["results_path"])
+    try:
+        hits = _parse_blast_json(results_path) if search["status"] == "succeeded" else []
+    except Exception as e:
+        raise HTTPException(500, f"Failed to parse BLAST results: {e}")
+    return {"search": _safe_public_run(search), "hits": hits}
+
+
+@app.get("/blast/searches/{search_id}/download")
+def blast_search_download(search_id: str):
+    search = BLAST_SEARCHES.get(search_id)
+    if not search:
+        raise HTTPException(404, "BLAST search not found")
+    results_path = Path(search["results_path"])
+    if not results_path.exists():
+        raise HTTPException(404, "BLAST results not found")
+    return StreamingResponse(open(results_path, "rb"), media_type="application/json")
 
 
 # ── Run endpoints ─────────────────────────────────────────────────────────────
