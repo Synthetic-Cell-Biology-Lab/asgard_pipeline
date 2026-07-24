@@ -705,3 +705,121 @@ body {
   transform-box: fill-box;
   transform-origin: center;
 }
+
+/* ── Landing page ─────────────────────────────────────── */
+
+.landing-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(127, 119, 221, 0.18), transparent 34rem),
+    radial-gradient(circle at 80% 0%, rgba(29, 158, 117, 0.14), transparent 28rem),
+    var(--bg);
+}
+
+.landing-hero {
+  width: min(920px, 100%);
+  text-align: center;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 0.5px solid var(--border);
+  border-radius: 28px;
+  padding: clamp(2rem, 6vw, 4rem);
+  box-shadow: 0 24px 80px rgba(20, 20, 40, 0.10);
+}
+
+.landing-logo {
+  width: min(220px, 48vw);
+  height: auto;
+  margin-bottom: 1rem;
+}
+
+.eyebrow {
+  color: var(--purple-dark);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.landing-hero h1 {
+  font-size: clamp(2.2rem, 7vw, 5rem);
+  line-height: 0.95;
+  letter-spacing: -0.08em;
+  margin-bottom: 1rem;
+}
+
+.landing-copy {
+  color: var(--dim);
+  font-size: 16px;
+  line-height: 1.65;
+  margin: 0 auto 2rem;
+  max-width: 680px;
+}
+
+.landing-copy.compact {
+  margin: 0 0 1rem;
+  max-width: none;
+  text-align: left;
+}
+
+.landing-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.choice-card {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.25rem;
+  border: 0.5px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+
+.choice-card:hover {
+  border-color: var(--purple);
+  box-shadow: 0 12px 36px rgba(83, 74, 183, 0.14);
+  transform: translateY(-2px);
+}
+
+.choice-card strong {
+  display: block;
+  font-size: 22px;
+  margin-bottom: 0.4rem;
+}
+
+.choice-card small {
+  color: var(--dim);
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.primary-choice {
+  background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+  color: #fff;
+}
+
+.primary-choice small { color: rgba(255, 255, 255, 0.82); }
+
+.choice-icon { font-size: 28px; line-height: 1; }
+
+.focused-panel {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .landing-actions { grid-template-columns: 1fr; }
+  .landing-page { padding: 1rem; }
+}

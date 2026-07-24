@@ -49,6 +49,68 @@ function toLabel(key) {
     .replace(/^\w/, c => c.toUpperCase())
 }
 
+
+// ── LandingPage ──────────────────────────────────────────────────────────────
+function LandingPage({ onChoose }) {
+  return (
+    <main className="landing-page">
+      <section className="landing-hero">
+        <img src={logoImg} alt="Asgard Pipeline" className="landing-logo" />
+        <p className="mono eyebrow">Asgard discovery workspace</p>
+        <h1>Where would you like to start?</h1>
+        <p className="landing-copy">
+          Keep the first screen focused on intent: run a reproducible workflow or search
+          sequences quickly, then progressively reveal the detailed tools each path needs.
+        </p>
+        <div className="landing-actions" aria-label="Choose a workflow">
+          <button className="choice-card primary-choice" onClick={() => onChoose('pipeline')}>
+            <span className="choice-icon" aria-hidden="true">⚙</span>
+            <span>
+              <strong>Pipeline</strong>
+              <small>Configure templates, edit YAML, run Snakemake, and inspect outputs.</small>
+            </span>
+          </button>
+          <button className="choice-card" onClick={() => onChoose('blast')}>
+            <span className="choice-icon" aria-hidden="true">🔎</span>
+            <span>
+              <strong>BLAST search</strong>
+              <small>Paste a sequence, choose a target database, and review hits.</small>
+            </span>
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+function BlastPanel({ onBack }) {
+  return (
+    <main className="pipeline-panel focused-panel">
+      <header className="sk-header">
+        <img src={logoImg} alt="Asgard Pipeline" className="header-logo" />
+        <div>
+          <h1 className="header-title">BLAST search</h1>
+          <p className="mono header-sub dim">Sequence search workspace</p>
+        </div>
+      </header>
+      <div className="card">
+        <div className="card-header">
+          <StepBadge n={1} active done={false} />
+          <span className="step-label">Coming next</span>
+        </div>
+        <p className="landing-copy compact">
+          This landing route is ready for a dedicated BLAST form. The next GUI step should
+          be a focused query screen with sequence input, database selection, search options,
+          progress feedback, and downloadable/tabular results.
+        </p>
+        <div className="save-row">
+          <button className="btn primary" onClick={onBack}>← Back to landing</button>
+        </div>
+      </div>
+    </main>
+  )
+}
+
 // ── StepBadge ─────────────────────────────────────────────────────────────────
 function StepBadge({ n, active, done }) {
   return (
@@ -399,8 +461,11 @@ function PipelinePanel() {
 
   // Load the right list whenever mode switches to a picker state
   useEffect(() => {
-    if (mode === 'existing') fetchConfigs()
-    else if (mode === 'template') fetchTemplates()
+    const loadConfigsForMode = async () => {
+      if (mode === 'existing') await fetchConfigs()
+      else if (mode === 'template') await fetchTemplates()
+    }
+    loadConfigsForMode()
   }, [mode, fetchConfigs, fetchTemplates])
 
   // ── select a config or template from the list ──────────────────────────────
@@ -670,6 +735,11 @@ function PipelinePanel() {
 
 // ── App root ──────────────────────────────────────────────────────────────────
 export default function App() {
+  const [appMode, setAppMode] = useState(null)
+
+  if (!appMode) return <LandingPage onChoose={setAppMode} />
+  if (appMode === 'blast') return <BlastPanel onBack={() => setAppMode(null)} />
+
   return (
     <div className="workspace-grid">
       <FileExplorer />
