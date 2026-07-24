@@ -1,15 +1,13 @@
 import re
-from glob import glob
 
-OUTDIR = config['run']["output_dir"]
+OUTDIR = config["output_dir"]
 ORGS   = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
 STAGES = config["pipeline_stages"]
 FINAL_STAGE = STAGES[-1]
 
 wildcard_constraints:
-    org        = "|".join(re.escape(o) for o in ORGS),
-    genome     = "[^/]+",
-    accession  = "[^/]+"
+    org    = "|".join(re.escape(o) for o in ORGS),
+    genome = "[^/]+"
 
 # =========================
 # Imports & config
@@ -22,55 +20,17 @@ import pandas as pd
 
 configfile: "config.yaml"
 
-CURRENT_DIR = config["run"].get('base_dir', workflow.basedir)
+CURRENT_DIR = config.get('base_dir', workflow.basedir)
 
 
-#
-# STORE_DIR  : canonical, deduplicated pool of raw genome FASTAs and bakta
-#              annotations. Persists across runs; never duplicated on disk.
-# MASTER_DIR : accumulating master tables (checkm2 / gtdbtk) that grow across
-#              runs instead of being siloed per run.
-# RUN_DIR    : this run's containerized workspace. Everything under it that
-#              represents a *genome file* is a symlink into STORE_DIR - the
-#              run directory itself holds no duplicated genome bytes.
-#
-# config.yaml needs a `run: id: <string>` (or top-level `run_id:`), e.g.
-#   run:
-#     id: 2026-07-23_loki_batch1
-#
-RUN_ID     = config["run"].get("id", "default")
-STORE_DIR  = f"{OUTDIR}/store"
-MASTER_DIR = f"{OUTDIR}/master"
-RUN_DIR    = f"{OUTDIR}/runs/{RUN_ID}"
+# =========================
+# Top-level constants
+# =========================
 
-#
-# config.yaml can optionally declare genomes to inject directly, bypassing
-# the NCBI taxon-summary search entirely. Two shapes per entry:
-#
-#   manual_genomes:
-#     lokiarchaeota:
-#       - accession: GCF_000001215.4      # fetched singly from NCBI
-#       - accession: my_custom_mag_01     # arbitrary ID, used as filename
-#         path: /data/manual/my_mag.fna   # local FASTA, copied in as-is
-#
-MANUAL_GENOMES = config['inputs'].get("manual_genomes", {})
-
-
-def manual_accessions(org):
-    return [g["accession"] for g in MANUAL_GENOMES.get(org, [])]
-
-
-def _manual_genome_info(accession):
-    for org, entries in MANUAL_GENOMES.items():
-        for g in entries:
-            if g["accession"] == accession:
-                return g
-    raise KeyError(f"No manual_genomes entry found for accession '{accession}'")
-
-
-ALL_MANUAL_ACCESSIONS = [
-    g["accession"] for entries in MANUAL_GENOMES.values() for g in entries
-]
+OUTDIR = config["output_dir"]
+ORGS   = [org["name"].replace(" ", "_").lower() for org in config["organisms"]]
+STAGES = config["pipeline_stages"]
+FINAL_STAGE = STAGES[-1]
 
 
 # =========================
@@ -80,9 +40,9 @@ ALL_MANUAL_ACCESSIONS = [
 
 def stage_dir(org, stage):
     stage_map = {
-        "raw":      f"{RUN_DIR}/{org}/genomes",
-        "filtered": f"{RUN_DIR}/{org}/filtered",
-        "derep":    f"{RUN_DIR}/skder/{org}",
+        "raw":      f"{OUTDIR}/{org}/genomes",
+        "filtered": f"{OUTDIR}/{org}/filtered",
+        "derep":    f"{OUTDIR}/skder/{org}",
     }
     return stage_map[stage]
 
@@ -105,10 +65,6 @@ def get_org_param(wc, field, default=None):
 # =========================
 # Bakta configuration
 # =========================
-#
-# NOTE: bakta/interproscan annotations are canonical too - they're expensive
-# and reusable across runs, so (like raw genomes) they live under STORE_DIR
-# unless the user points at an existing external annotation directory.
 
 BAKTA_EXISTING = config.get("cds", {}).get("existing")
 
@@ -116,7 +72,7 @@ if BAKTA_EXISTING:
     BAKTA_OUTDIR     = Path(BAKTA_EXISTING)
     EXISTING_GENOMES = {p.name for p in BAKTA_OUTDIR.iterdir() if p.is_dir()}
 else:
-    BAKTA_OUTDIR     = Path(f"{STORE_DIR}/bakta")
+    BAKTA_OUTDIR     = Path(f"{OUTDIR}/bakta")
     EXISTING_GENOMES = set()
 
 # =========================
@@ -125,36 +81,30 @@ else:
 
 rule all:
     input:
-        expand(f"{RUN_DIR}/{{org}}/done.flag",                      org=ORGS),
-        expand(f"{RUN_DIR}/skder/{{org}}/dedup_done.flag",          org=ORGS),
-        expand(f"{RUN_DIR}/checkm2/{{org}}/checkm2_done.flag",      org=ORGS),
-        expand(f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",        org=ORGS),
-        expand(f"{RUN_DIR}/gtdbtk/{{org}}_taxa_count.svg",          org=ORGS),
-        expand(f"{RUN_DIR}/interproscan/{{org}}/ips_done.flag",     org=ORGS),
-        expand(f"{config['inputs']["out_fasta"]}_{{org}}.faa" ,org = ORGS),
-        expand(f"{config['inputs']['out_genome_csv']}_{{org}}.csv", org = ORGS),
-        expand(f"{config['inputs']['out_protein_csv']}_{{org}}.csv", org = ORGS),
-        # NEW: master tables + manually-added genomes are always in scope
-        f"{MASTER_DIR}/checkm2_quality_report.tsv",
-        f"{MASTER_DIR}/gtdbtk_classification.ar53.csv",
-        expand(f"{STORE_DIR}/genomes/{{accession}}.fna", accession=ALL_MANUAL_ACCESSIONS)
+        expand(f"{OUTDIR}/{{org}}/done.flag",                      org=ORGS),
+        expand(f"{OUTDIR}/skder/{{org}}/dedup_done.flag",          org=ORGS),
+        expand(f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag",      org=ORGS),
+        expand(f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",        org=ORGS),
+        expand(f"{OUTDIR}/gtdbtk/{{org}}_taxa_count.svg",          org=ORGS),
+        expand(f"{OUTDIR}/interproscan/{{org}}/ips_done.flag", org=ORGS),
+        expand(f"{config["out_fasta"]}_{{org}}.faa" ,org = ORGS),
+        expand(f"{config['out_genome_csv']}_{{org}}.csv", org = ORGS),
+        expand(f"{config['out_protein_csv']}_{{org}}.csv", org = ORGS)
 
 
 
 # get the list of genomes that is already present in our database
 rule check_database:
-    params:
+    input:
         input_path = f"{BAKTA_OUTDIR}/{{org}}/"
     output:
-        genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt"
+        genomes_present = f"{OUTDIR}/{{org}}/present_list.txt"
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
-        mkdir -p {params.input_path}
-        touch {output}
-        find {params.input_path} -maxdepth 1 -mindepth 1 -type d -printf '%f\n' > {output}
-
+        find {input.input_path} -maxdepth 1 -mindepth 1 -type d -printf '%f\n' > {output}
+        
         """
 
 # get the summary of genomse deposited in the ncbi-datasets with our specifications
@@ -167,9 +117,9 @@ rule get_summary:
     Search yields serveral reports per genome, needs to be deduplicated.
     """
     output:
-        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv"
+        summary=f"{OUTDIR}/{{org}}/genomes_summary.tsv"
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     params:
         name=lambda wc: get_org_param(wc, "name"),
         level=lambda wc: " ".join(
@@ -200,23 +150,19 @@ rule get_summary:
 
 rule prepare_download_list:
     """
-    Takes the summary file, subtracts genomes already present (annotated in a
-    prior run), genomes already sitting in the canonical STORE_DIR pool
-    (downloaded by this or any earlier run), and genomes that are being
-    supplied manually for this org (see `manual_genomes` in config, handled
-    by `add_manual_genome` / `link_run_genomes`). What's left is the true
-    delta that actually needs to be fetched from NCBI this run.
+    Takes input of the summary file and the genomes in the database 
+    and creates a list that is not there in our database
+    
     """
     input:
-        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
-        genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt"
+        summary=f"{OUTDIR}/{{org}}/genomes_summary.tsv",
+        genomes_present = f"{OUTDIR}/{{org}}/present_list.txt"
     output:
-        accession_list = f"{RUN_DIR}/{{org}}/accession_list_to_download.txt"
+        accession_list = f"{OUTDIR}/{{org}}/accession_list_to_download.txt"
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     run:
         import pandas as pd
-        from pathlib import Path
 
         summary_df = pd.read_csv(input.summary, sep="\t")
         with open(input.genomes_present) as f:
@@ -226,183 +172,56 @@ rule prepare_download_list:
                 if line.strip()
             ]
 
-        # anything already downloaded (by this or a previous run) lives here
-        store_dir = Path(STORE_DIR, "genomes")
-        store_dir.mkdir(parents=True, exist_ok=True)
-        store_have = {p.stem for p in store_dir.glob("*.fna")}
-
-        # manual additions are injected separately, never auto-downloaded
-        manual = set(manual_accessions(wildcards.org))
-
-        to_be_downloaded = (
-            set(summary_df['Assembly Accession'].tolist())
-            - set(present_list)
-            - store_have
-            - manual
-        )
+        to_be_downloaded = set(summary_df['Assembly Accession'].tolist()) - set(present_list)
 
         with open(output.accession_list, 'w') as out:
-            out.write("\n".join(sorted(to_be_downloaded)))
+            out.write("\n".join(list(to_be_downloaded)))
         
 
 
 
 
 rule download_genomes:
-    # Downloads genomes from ncbi datasets. The list is often empty on
-    # repeat runs now that genomes are deduplicated against STORE_DIR, so
-    # this guards against calling `datasets download` with nothing to fetch.
+    # Downloads genomes from ncbi datasets
     input:
-        accession_list = f"{RUN_DIR}/{{org}}/accession_list_to_download.txt"
+        accession_list = f"{OUTDIR}/{{org}}/accession_list_to_download.txt"
     output:
-        zipfile = f"{RUN_DIR}/{{org}}/dataset.zip"
+        zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
-        if [ -s {input.accession_list} ]; then
-            datasets download genome accession \
-                --inputfile {input.accession_list} \
-                --include genome \
-                --filename {output.zipfile} \
-                --dehydrated
-        else
-            mkdir -p $(dirname {output.zipfile})
-            : > {output.zipfile}
-        fi
+        datasets download genome accession \
+            --inputfile {input.accession_list} \
+            --include genome \
+            --filename {output.zipfile} \
+            --dehydrated
         """
 
 
 rule extract_genomes:
-    """
-    Rehydrates any newly downloaded genomes and imports them into the
-    canonical, deduplicated STORE_DIR pool (STORE_DIR/genomes/<accession>.fna).
-    This rule deliberately does NOT write into the run-specific directory -
-    that containerized view is assembled purely from symlinks by
-    `link_run_genomes` below, so genome bytes are never duplicated per run.
-    """
+# extracts genomes and rehydrates them to recover full file
     input:
-        zipfile = f"{RUN_DIR}/{{org}}/dataset.zip"
+        zipfile = f"{OUTDIR}/{{org}}/dataset.zip"
     output:
-        flag = f"{RUN_DIR}/{{org}}/download_done.flag"
+        flag    = f"{OUTDIR}/{{org}}/done.flag",
+        genomes = directory(f"{OUTDIR}/{{org}}/genomes")
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
-        mkdir -p {STORE_DIR}/genomes
-        EXTRACT_DIR={RUN_DIR}/{wildcards.org}/extracted
+        mkdir -p {output.genomes}
 
-        if [ -s {input.zipfile} ]; then
-            mkdir -p $EXTRACT_DIR
-            unzip -o {input.zipfile} -d $EXTRACT_DIR
+        unzip -o {input.zipfile} \
+            -d {OUTDIR}/{wildcards.org}/
+        
+        datasets rehydrate --directory  {OUTDIR}/{wildcards.org}/
 
-            datasets rehydrate --directory $EXTRACT_DIR
-
-            find $EXTRACT_DIR/ncbi_dataset/data/ -name "*.fna" | while read -r f; do
-                acc=$(basename "$f" .fna)
-                if [ ! -f {STORE_DIR}/genomes/"$acc".fna ]; then
-                    cp "$f" {STORE_DIR}/genomes/"$acc".fna
-                fi
-            done
-        fi
+        find {OUTDIR}/{wildcards.org}/ncbi_dataset/data/ \
+            -name "*.fna" \
+            -exec ln -sf {{}} {output.genomes}/ \;
 
         touch {output.flag}
-        """
-
-
-rule link_run_genomes:
-    """
-    Assembles this run's containerized genome directory using only symlinks
-    into STORE_DIR. This is the single place where automatically-downloaded
-    genomes (from `extract_genomes`) and manually-added genomes (feature 3,
-    from `add_manual_genome`) converge into one view for this run - without
-    duplicating any underlying .fna bytes on disk.
-
-    Produces the same `done.flag` / `genomes` outputs that downstream rules
-    (checkm2, link_filtered, skder, gtdbtk, ...) already expect, so nothing
-    further down the DAG needs to change.
-    """
-    input:
-        download_flag  = f"{RUN_DIR}/{{org}}/download_done.flag",
-        summary        = f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
-        manual_genomes = lambda wc: expand(
-            f"{STORE_DIR}/genomes/{{accession}}.fna",
-            accession=manual_accessions(wc.org)
-        )
-    output:
-        flag    = f"{RUN_DIR}/{{org}}/done.flag",
-        genomes = directory(f"{RUN_DIR}/{{org}}/genomes")
-    conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
-    run:
-        import pandas as pd
-        import os
-
-        os.makedirs(output.genomes, exist_ok=True)
-
-        summary_df = pd.read_csv(input.summary, sep="\t")
-        print(summary_df.columns)
-        print(summary_df.head())
-        print(len(summary_df))
-        accessions = set(
-            str(x).strip()
-            for x in summary_df["Assembly Accession"]
-            if pd.notna(x)
-        )
-        accessions.update(manual_accessions(wildcards.org))
-
-        for acc in accessions:
-            matches = glob(f"{STORE_DIR}/genomes/{acc}*.fna")
-            if matches:
-                src = os.path.abspath(matches[0])
-                dst = f"{output.genomes}/{os.path.basename(src)}.fna"
-            # silently skipped if the .fna never made it into the store
-            # (e.g. a "present"/already-annotated genome from before the
-            # store existed) - same net effect as the old behaviour.
-                if os.path.exists(src) and not os.path.exists(dst):
-                    os.symlink(src, dst)
-
-        with open(output.flag, "w") as f:
-            f.write("done\n")
-
-
-# ---- NEW: single genome addition (feature 3) -------------------------------
-
-rule add_manual_genome:
-    """
-    Registers a manually supplied genome into the canonical STORE_DIR pool,
-    exactly like an automatically-downloaded genome. Two modes, chosen by
-    whether the manual_genomes config entry provides a `path`:
-
-      - `path` given  -> copied in verbatim (a local FASTA / custom MAG)
-      - no `path`     -> fetched singly from NCBI by accession
-
-    Once in the store, `link_run_genomes` symlinks it into any org's run
-    directory that lists it under `manual_genomes`, and it flows through
-    checkm2 / dereplication / gtdbtk / bakta like any other genome.
-    """
-    output:
-        genome = f"{STORE_DIR}/genomes/{{accession}}.fna"
-    params:
-        path = lambda wc: _manual_genome_info(wc.accession).get("path", "")
-    conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
-    shell:
-        """
-        mkdir -p {STORE_DIR}/genomes
-
-        if [ -n "{params.path}" ]; then
-            cp "{params.path}" {output.genome}
-        else
-            TMPDIR=$(mktemp -d)
-            datasets download genome accession {wildcards.accession} \
-                --include genome \
-                --filename $TMPDIR/dl.zip
-            unzip -o $TMPDIR/dl.zip -d $TMPDIR/extracted
-            find $TMPDIR/extracted/ncbi_dataset/data/ -name "*.fna" \
-                -exec cp {{}} {output.genome} \;
-            rm -rf $TMPDIR
-        fi
         """
 
 
@@ -412,17 +231,17 @@ rule checkm2:
     ensure that the results that get is valid and not from contamination
     """
     input:
-        flag        = f"{RUN_DIR}/{{org}}/done.flag",
-        genomes_dir = f"{RUN_DIR}/{{org}}/genomes"
+        flag        = f"{OUTDIR}/{{org}}/done.flag",
+        genomes_dir = f"{OUTDIR}/{{org}}/genomes"
     output:
-        outdir         = directory(f"{RUN_DIR}/checkm2/{{org}}"),
-        checkm2_flag   = f"{RUN_DIR}/checkm2/{{org}}/checkm2_done.flag",
-        quality_report = f"{RUN_DIR}/checkm2/{{org}}/quality_report.tsv"
+        outdir         = directory(f"{OUTDIR}/checkm2/{{org}}"),
+        checkm2_flag   = f"{OUTDIR}/checkm2/{{org}}/checkm2_done.flag",
+        quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv"
     threads: 16
     params:
         db = config["checkm2"]["db_path"]
     conda:
-        f"{config['run'].get('env_dir')}/checkm2.yaml"
+        f"{config.get('env_dir')}/checkm2.yaml"
     shell:
         """
         checkm2 predict \
@@ -440,17 +259,17 @@ rule checkm2:
 rule link_filtered:
     # create symlink for files that pass checkm2 parameter thresholds
     input:
-        quality_report = f"{RUN_DIR}/checkm2/{{org}}/quality_report.tsv",
+        quality_report = f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
         genomes_dir    = lambda wc: stage_dir(wc.org, "raw")   # FIX: was prev_stage_dir(wc.org, "filtered")
     output:
-        filtered_dir  = directory(f"{RUN_DIR}/{{org}}/filtered"),
-        filtered_list = f"{RUN_DIR}/{{org}}/filtered/passed_genomes.txt"
+        filtered_dir  = directory(f"{OUTDIR}/{{org}}/filtered"),
+        filtered_list = f"{OUTDIR}/{{org}}/filtered/passed_genomes.txt"
     threads: 1
     params:
         cont         = config["checkm2"]["Contamination"],
         completeness = config["checkm2"]["Completeness"]
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     shell:
         """
         mkdir -p {output.filtered_dir}
@@ -474,15 +293,15 @@ rule skder:
         genomes_dir = lambda wc: prev_stage_dir(wc.org, "derep"),
         stage_list  = lambda wc: f"{prev_stage_dir(wc.org, 'derep')}/passed_genomes.txt"
     output:
-        derep_dir  = directory(f"{RUN_DIR}/skder/{{org}}"),
-        derep_list = f"{RUN_DIR}/skder/{{org}}/derep_genomes.txt",
-        flag       = f"{RUN_DIR}/skder/{{org}}/dedup_done.flag",
+        derep_dir  = directory(f"{OUTDIR}/skder/{{org}}"),
+        derep_list = f"{OUTDIR}/skder/{{org}}/derep_genomes.txt",
+        flag       = f"{OUTDIR}/skder/{{org}}/dedup_done.flag",
     threads: 16
     params:
         ani    = config['deduplication']['ani'],
         min_af = config['deduplication']['min_af']
     conda:
-        f"{config['run'].get('env_dir')}/skder.yaml"
+        f"{config.get('env_dir')}/skder.yaml"
     shell:
         """
         skder -g {input.genomes_dir} \
@@ -506,8 +325,8 @@ rule gtdbtk:
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
         db_dir      = ancient(config["gtdb"]["db_path"])
     output:
-        outdir = directory(f"{RUN_DIR}/gtdbtk/{{org}}"),
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
+        outdir = directory(f"{OUTDIR}/gtdbtk/{{org}}"),
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
     threads:
         config["gtdb"].get("threads", 16)
     params:
@@ -520,7 +339,7 @@ rule gtdbtk:
         scratch_dir  = config["gtdb"].get("scratch_dir",  "/tmp"),
         extra_args   = config["gtdb"].get("extra_args",   "")
     conda:
-        f"{config['run'].get('env_dir')}/gtdbtk.yaml"
+        f"{config.get('env_dir')}/gtdbtk.yaml"
     shell:
         """
         export GTDBTK_DATA_PATH={params.db}
@@ -547,14 +366,14 @@ checkpoint split_taxonomy:
     # split the taxonomic levels into individual columns from the gtdbtk output
     # also a checkpoint to revise the processes required to be run
     input:
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
 
     output:
-        f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+        f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
     conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config.get('env_dir')}/Reg.yaml"
     params:
-        tsv_file = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk.ar53.summary.tsv"
+        tsv_file = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk.ar53.summary.tsv"
     run:
         import pandas as pd
 
@@ -583,11 +402,11 @@ checkpoint split_taxonomy:
 rule taxa_counts:
     # plot taxacounts at class level
     input:
-        csv = f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+        csv = f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
     output:
-        plot = f"{RUN_DIR}/gtdbtk/{{org}}_taxa_count.svg"
+        plot = f"{OUTDIR}/gtdbtk/{{org}}_taxa_count.svg"
     conda:
-        f"{config['run'].get('env_dir')}/bio-r.yaml"
+        f"{config['env_dir']}/bio-r.yaml"
     message:
         """
         ==========================================
@@ -600,74 +419,6 @@ rule taxa_counts:
             -i {input.csv} \
             -o {output.plot}
         """
-
-
-# ---- NEW: master-table accumulation (feature 2) ----------------------------
-
-rule update_master_checkm2:
-    """
-    Appends this run's CheckM2 quality reports (across all orgs) into a
-    single running master table, keyed by genome `Name`. Existing rows for
-    a genome are refreshed if it was reprocessed; genomes new to this run
-    are simply appended - so the master table always reflects every genome
-    ever assessed, not just this run's set.
-    """
-    input:
-        reports = expand(f"{RUN_DIR}/checkm2/{{org}}/quality_report.tsv", org=ORGS)
-    output:
-        master = f"{MASTER_DIR}/checkm2_quality_report.tsv"
-    run:
-        import pandas as pd
-        import os
-
-        new_df = pd.concat(
-            [pd.read_csv(f, sep="\t") for f in input.reports],
-            ignore_index=True
-        )
-
-        os.makedirs(MASTER_DIR, exist_ok=True)
-
-        if os.path.exists(output.master):
-            old_df = pd.read_csv(output.master, sep="\t")
-            combined = pd.concat([old_df, new_df], ignore_index=True)
-        else:
-            combined = new_df
-
-        combined = combined.drop_duplicates(subset="Name", keep="last")
-        combined.to_csv(output.master, sep="\t", index=False)
-
-
-rule update_master_gtdbtk:
-    """
-    Same idea as update_master_checkm2, but for GTDB-Tk taxonomic
-    classifications, keyed by `user_genome`.
-    """
-    input:
-        taxonomy = expand(
-            f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv",
-            org=ORGS
-        )
-    output:
-        master = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv"
-    run:
-        import pandas as pd
-        import os
-
-        new_df = pd.concat(
-            [pd.read_csv(f) for f in input.taxonomy],
-            ignore_index=True
-        )
-
-        os.makedirs(MASTER_DIR, exist_ok=True)
-
-        if os.path.exists(output.master):
-            old_df = pd.read_csv(output.master)
-            combined = pd.concat([old_df, new_df], ignore_index=True)
-        else:
-            combined = new_df
-
-        combined = combined.drop_duplicates(subset="user_genome", keep="last")
-        combined.to_csv(output.master, index=False)
 
 
 # helper functions to get the bakta, interproscan and collation output for all genomes
@@ -700,8 +451,8 @@ def filtered_tsv_for_org(wildcards):
 # 
 rule bakta:
     input:
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
-        genome =  f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
+        genome =  f"{OUTDIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
     output:
         fasta = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
         tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
@@ -711,7 +462,7 @@ rule bakta:
         bakta_db = config.get("cds", {}).get("bakta_db", "")
     threads: 4
     conda:
-        f"{config['run'].get('env_dir')}/bakta.yaml"
+        f"{config['env_dir']}/bakta.yaml"
     shell:
         """
         mkdir -p {params.outdir}
@@ -730,7 +481,7 @@ rule bakta:
 
 rule interproscan:
     input:
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
         faa = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
     output:
         tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
@@ -763,9 +514,9 @@ rule interproscan:
 rule all_interproscan:
     input:
         genomes = filtered_genomes_for_org,
-        flag    = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
+        flag    = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
     output:
-        done_flag = f"{RUN_DIR}/interproscan/{{org}}/ips_done.flag"
+        done_flag = f"{OUTDIR}/interproscan/{{org}}/ips_done.flag"
     shell:
         "touch {output.done_flag}"
 
@@ -776,7 +527,7 @@ rule collate_proteins:
     input:
         filtered_faa_for_org
     output:
-        out_fasta=f"{config['inputs']["out_fasta"]}_{{org}}.faa"
+        out_fasta=f"{config["out_fasta"]}_{{org}}.faa"
     shell:
         """
         cat {input} > {output.out_fasta}
@@ -785,27 +536,34 @@ rule collate_proteins:
 
 
 rule make_genome_csv:
-    """
-    NOTE: now reads from the accumulating MASTER_DIR tables (feature 2)
-    rather than only this run's per-org outputs, so genomes added in
-    earlier runs (or via manual_genomes) stay represented in newly
-    generated dataset versions.
-    """
     input:
-        flag     = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
-        checkm2  = f"{MASTER_DIR}/checkm2_quality_report.tsv",
-        taxonomy = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv"
+        flag   = f"{OUTDIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
+        checkm2=lambda wc: expand(
+            f"{OUTDIR}/checkm2/{{org}}/quality_report.tsv",
+            org=ORGS
+        ),
+        taxonomy=lambda wc: expand(
+            f"{OUTDIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv",
+            org=ORGS
+        )
     output:
-        filtered=f"{config['inputs']["out_genome_csv"]}_{{org}}.csv",
-        unfiltered=f"{config['inputs']["out_genome_csv_unfiltered"]}_{{org}}.csv"
+        filtered=f"{config["out_genome_csv"]}_{{org}}.csv",
+        unfiltered=f"{config["out_genome_csv_unfiltered"]}_{{org}}.csv"
     params:
         completeness=config["checkm2"]["Completeness"],
         contamination=config["checkm2"]["Contamination"]
     run:
         import pandas as pd
 
-        checkm2 = pd.read_csv(input.checkm2, sep="\t")
-        taxonomy = pd.read_csv(input.taxonomy)
+        checkm2 = pd.concat(
+            [pd.read_csv(f, sep="\t") for f in input.checkm2],
+            ignore_index=True
+        )
+
+        taxonomy = pd.concat(
+            [pd.read_csv(f) for f in input.taxonomy],
+            ignore_index=True
+        )
 
         df = checkm2.merge(
             taxonomy[
@@ -874,9 +632,9 @@ rule make_genome_csv:
 rule make_protein_csv:
     input:
         genomes = filtered_tsv_for_org,
-        done_flag = f"{RUN_DIR}/interproscan/{{org}}/ips_done.flag"
+        done_flag = f"{OUTDIR}/interproscan/{{org}}/ips_done.flag"
     output:
-        f"{config['inputs']["out_protein_csv"]}_{{org}}.csv"
+        f"{config["out_protein_csv"]}_{{org}}.csv"
     run:
         import pandas as pd
 

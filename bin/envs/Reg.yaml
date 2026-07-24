@@ -20,4 +20,5 @@ dependencies:
   - scikit-learn
   - networkx
   - colorcet
+  - muscle
 prefix: /root/miniconda3/envs/Reg

@@ -1,15 +1,17 @@
 run:
-  id: cdpb_run4
-  protein_name: cdpb
-  pipeline: extraction_pipeline
+  id: dipa_run4
+  phyl_id: dipa_phylogeny_run1
+  protein_name: dipa
+  pipeline: phylogeny_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: To find cdpb proteins in asgard using IPS id search
+  reason: To perform phylogeny of dipa
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
   LOCUS_TAG: locus_tag
+
 SSN:
   RUN_SSN: True
   copy_to_windows: True
@@ -53,7 +55,7 @@ modes:
   from_manual:
     enabled: false        
     manual_annotation_filter:
-    - cdpb
+    - dipa
   from_fasta_csv: 
     enabled: false
 
@@ -62,14 +64,14 @@ plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - cdpb
+  - dipa
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - cdpb
+  - dipa
 
 
   ymin: 0
@@ -78,4 +80,50 @@ phylogeny:
   threads: 12
   run_itol_upload: true
   itol_project: Asgard
-  madroot: false
+  madroot: false    
+  alignment:
+    method: mafft
+    famsa:
+      threads: 8
+      extra_args: ''
+    mafft:
+      mode: --auto
+      threads: 8
+      extra_args: '--maxiterate 1000'
+    muscle:
+      mode: -align
+      threads: 8
+      extra_args: ''
+
+  trimming:
+    method: clipkit
+    trimal:
+      mode: -automated1
+      extra_args: ''
+    bmge:
+      matrix: BLOSUM62
+      gap_rate: 0.5
+      entropy: 0.5
+      extra_args: ''
+    clipkit:
+      mode: smart-gap
+      extra_args: ''
+  tree:
+    method: iqtree
+    iqtree:
+      model: MFP
+      seqtype: AA
+      bootstrap: 1000 # >95% good enough
+      bootstrap_method: -B
+      alrt: 1000 # if >85% good enough
+      outgroup: null
+      seed: 12345
+      ninit: 100
+      ntop: 20
+      nbest: 5
+      nstop: 200
+      niter: null
+      max_iter: 1000
+      epsilon: 0.01
+      threads: 8
+      extra_args: ''

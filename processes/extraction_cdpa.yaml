@@ -1,18 +1,18 @@
 run:
-  id: cdpb_run4
-  protein_name: cdpb
+  id: cdpa_test_1
+  protein_name: cdpa
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: To find cdpb proteins in asgard using IPS id search
+  reason: creating psiblast pipeline for cdpa
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
   LOCUS_TAG: locus_tag
 SSN:
-  RUN_SSN: True
-  copy_to_windows: True
+  RUN_SSN: false
+  copy_to_windows: false
   windows_path: "/mnt/e/ssn_outputs"
   SSN_BITSCORES:
   - 50
@@ -35,6 +35,11 @@ inputs:
   genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
   protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
   fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+  arcog:
+    def_tab: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/arCOGdef.tab"
+    fasta: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/ar18.fa"
+    csv: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/ar18.ar14.02.csv"
+
 modes:
   parse_ips:
     enabled: false
@@ -53,23 +58,33 @@ modes:
   from_manual:
     enabled: false        
     manual_annotation_filter:
-    - cdpb
+    - cdpa
   from_fasta_csv: 
     enabled: false
+  arcog:
+    enabled: true
+    search_terms:
+    - PRC-barrel
+    ids:
+    - "2155"
+    - "2157"
+    - "2158"
+    - "5740"
+    - "8023"
 
 
 plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - cdpb
+  - cdpa
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - cdpb
+  - cdpa
 
 
   ymin: 0

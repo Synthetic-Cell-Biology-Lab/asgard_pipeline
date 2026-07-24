@@ -1,18 +1,18 @@
 run:
-  id: cdpb_run4
-  protein_name: cdpb
+  id: ftsz_test_run
+  protein_name: ftsz
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: To find cdpb proteins in asgard using IPS id search
+  reason: searching for ftsz
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
   LOCUS_TAG: locus_tag
 SSN:
   RUN_SSN: True
-  copy_to_windows: True
+  copy_to_windows: true
   windows_path: "/mnt/e/ssn_outputs"
   SSN_BITSCORES:
   - 50
@@ -35,41 +35,58 @@ inputs:
   genome_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/genome_file/jan2026_85comp10con_gf.csv"
   protein_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/protein_file/jan2026_85comp10con_pf.csv"
   fasta_file: "/home/anirudh/asgard_pipeline/database/collated/Version1/filtered/85comp10con/fasta/v1_cp85_con10.fasta"
+  arcog:
+    def_tab: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/arCOGdef.tab"
+    fasta: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/ar18.fa"
+    csv: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/ar18.ar14.02.csv"
+
 modes:
   parse_ips:
     enabled: false
     remove_hypotheticals: false
     search:
-      search_string: 
+      search_string: ftsz
       rstring: 
   hmmsearch:
-    enabled: true
+    enabled: false
     acc_groups:
-    - IPR027275 # PRC-barrel domain
-    - PF05239 # PRC-barrel domain
-    - PF24986 # RimM
-    - PF20259 # tRNA methyl transferase
-    - IPR011033 # like superfamily
+    - PF12327 # ftsz c terminal
   from_manual:
-    enabled: false        
+    enabled: true        
     manual_annotation_filter:
-    - cdpb
+    - putative_somethings
+    - FtsZ1
+    - FtsZ2
   from_fasta_csv: 
     enabled: false
+  arcog:
+    enabled: false
+    search_terms:
+    - PRC-barrel
+    ids:
+    - "2155"
+    - "2157"
+    - "2158"
+    - "5740"
+    - "8023"
 
 
 plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - cdpb
+    - putative_somethings
+    - FtsZ1
+    - FtsZ2
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - cdpb
+    - putative_somethings
+    - FtsZ1
+    - FtsZ2
 
 
   ymin: 0

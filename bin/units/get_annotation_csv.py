@@ -73,9 +73,11 @@ print(f"[INFO] Cluster entries: {len(cluster_df)}")
 
 merged = pd.merge(filtered, cluster_df, left_on=SEQ_ID, right_on="id", how="left")
 
-domain_df = pd.read_csv(domain_tsv, sep = "\t")
+domain_df = pd.read_csv(domain_tsv, sep="\t")
 
-merged2 = pd.merge(merged,domain_df, left_on = SEQ_ID, right_on = "protein", how = "left")
+domain_df.columns = domain_df.columns.str.strip()
+
+merged2 = pd.merge(merged, domain_df, left_on=SEQ_ID, right_on="protein", how="left")
 
 ############################################
 # Write output

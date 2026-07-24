@@ -11,10 +11,19 @@ envvars:
 if not config:
     raise ValueError("No config provided. Use --configfile.")
 
-PROTEIN        = config["protein_name"]
+PROTEIN        = config['run']["protein_name"]
 LOG            = config["pipeline_log"]
-RUN_ID         = config.get("phyl_id")
-EXPLORATION_ID = config.get("run_id")
+
+"""
+Phylogeny pipeline inherits the exploration data from a previous run of
+extraction pipeline. Therefore, the pipeline will make sub folders within
+a given extraction pipeline output folder (can be several different runs
+per extraction run). 
+"""
+# the phyl id is the name of the folder which will hold the outputs for the phylogeny pipeline
+RUN_ID         = config.get('run').get("phyl_id")
+# exploration id is the id of the extraction pipeline run that this phylogeny run will inherit
+EXPLORATION_ID = config.get("run").get("id")
 
 if not RUN_ID:
     raise ValueError("run_id is required.")
@@ -22,20 +31,21 @@ if not EXPLORATION_ID:
     raise ValueError("exploration_id is required.")
 
 BASE_DIR        = os.getcwd()
-CURRENT_DIR = config.get('base_dir', workflow.basedir)
+CURRENT_DIR = config['run'].get('base_dir', workflow.basedir)
 EXPLORATION_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{EXPLORATION_ID}/extraction_exploration"
 PARENT_DIR = f"{BASE_DIR}/database/protein_sets/{PROTEIN}/{EXPLORATION_ID}"
 PHYLO_DIR       = f"{PARENT_DIR}/final_phylogeny"   # pre-existing, input only
 RESULT_DIR      = f"{PARENT_DIR}/{RUN_ID}"          # all new outputs go here
 LOG_DIR         = f"{RESULT_DIR}/Logs"
+ENV_DIR = f"{config['run']['env_dir']}"
 
 os.makedirs(RESULT_DIR, exist_ok=True)
 os.makedirs(LOG_DIR,    exist_ok=True)
 
-if config.get("from_manual", False):
-    include: "rules/from_manual.smk"
-elif config.get("from_fasta_csv", False):
-    include: "rules/from_fasta_and_csv.smk"
+# if config.get("from_manual", False):
+#     include: "../extraction_pipeline/rules/from_manual.smk"
+# elif config.get("from_fasta_csv", False):
+#     include: "../extraction_pipeline/rules/from_fasta_and_csv.smk"
 
 ############################################################
 # Helpers
@@ -43,7 +53,7 @@ elif config.get("from_fasta_csv", False):
 
 
 def get_align_fasta(wildcards):
-    if config.get("extend_phylogeny", {}).get("add_sequences", False):
+    if config['phylogeny'].get("extend_phylogeny", {}).get("add_sequences", False):
         return f"{PARENT_DIR}/{PROTEIN}.final.nr.fasta"
     return f"{PARENT_DIR}/{PROTEIN}.final.fasta"
 
@@ -96,7 +106,7 @@ rule make_rev_csv:
         rev_csv = f"{PARENT_DIR}/{PROTEIN}.rev.csv"
     
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
 
     run:
         import pandas as pd
@@ -105,7 +115,7 @@ rule make_rev_csv:
         locus_tags = set()
 
         with open(input.rev_fasta) as f:
-            for line in f:
+            for line in f:  
                 if line.startswith(">"):
                     locus = line[1:].strip().split()[0]
                     locus_tags.add(locus)
@@ -133,11 +143,11 @@ rule make_rev_csv:
 rule add_fasta_sequences:
     input:
         rev_fasta         = f"{PARENT_DIR}/{PROTEIN}.rev.fasta",
-        additional_fastas = config.get('extend_phylogeny', {}).get('additional_fasta', [])
+        additional_fastas = config['phylogeny'].get('extend_phylogeny', {}).get('additional_fasta', [])
     output:
         full_fasta = f"{PARENT_DIR}/{PROTEIN}.final.fasta"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     script:
         "/home/anirudh/asgard_pipeline/bin/units/add_fasta_sequences.py"
         
@@ -151,7 +161,7 @@ rule cdhit_100:
     output:
         fasta   = f"{PARENT_DIR}/{PROTEIN}.final.nr.fasta"
     conda:
-        f"{config['env_dir']}/ssn.yaml"
+        f"{ENV_DIR}/ssn.yaml"
     threads: 8
     shell:
         """
@@ -173,7 +183,7 @@ rule build_final_metadata_csv:
     output:
         final_csv = f"{PARENT_DIR}/{PROTEIN}.final.csv"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     script:
         "/home/anirudh/asgard_pipeline/bin/units/build_final_metadata_csv.py"
 
@@ -184,15 +194,16 @@ rule align:
     output:
         aln   = f"{RESULT_DIR}/{PROTEIN}.aln.fasta"
     threads:
-        config["alignment"].get(
-            config["alignment"]["method"], {}
+        config['phylogeny']["alignment"].get(
+            config['phylogeny']["alignment"]["method"], {}
         ).get("threads", 8)
     params:
-        method = config["alignment"]["method"],
-        famsa  = config["alignment"].get("famsa",  {}),
-        mafft  = config["alignment"].get("mafft",  {})
+        method = config['phylogeny']["alignment"]["method"],
+        famsa  = config['phylogeny']["alignment"].get("famsa",  {}),
+        mafft  = config['phylogeny']["alignment"].get("mafft",  {}),
+        muscle = config['phylogeny']["alignment"].get("muscle", {})
     conda:
-        f"{config['env_dir']}/phylogeny.yaml"
+        f"{ENV_DIR}/phylogeny.yaml"
     log:
         f"{LOG_DIR}/{PROTEIN}.align.log"
     shell:
@@ -213,6 +224,14 @@ rule align:
                 {input.fasta} \
                 > {output.aln} \
                 2> >(tee {log} >&2)
+        elif [ "{params.method}" = "muscle" ]; then
+            muscle \
+                {params.muscle[mode]} \
+                -threads {threads} \
+                {params.muscle[extra_args]} \
+                {input.fasta} \
+                -output {output.aln} \ 
+                2> >(tee {log} >&2)
         else
             echo "Unknown alignment method: {params.method}" >&2
             exit 1
@@ -226,12 +245,12 @@ rule trim:
     output:
         trimmed = f"{RESULT_DIR}/{PROTEIN}.trimmed.fasta"
     params:
-        method  = config["trimming"]["method"],
-        trimal  = config["trimming"].get("trimal",  {}),
-        bmge    = config["trimming"].get("bmge",    {}),
-        clipkit = config["trimming"].get("clipkit", {})
+        method  = config['phylogeny']["trimming"]["method"],
+        trimal  = config['phylogeny']["trimming"].get("trimal",  {}),
+        bmge    = config['phylogeny']["trimming"].get("bmge",    {}),
+        clipkit = config['phylogeny']["trimming"].get("clipkit", {})
     conda:
-        f"{config['env_dir']}/phylogeny.yaml"
+        f"{ENV_DIR}/phylogeny.yaml"
     log:
         f"{LOG_DIR}/{PROTEIN}.trim.log"
     shell:
@@ -276,13 +295,13 @@ rule run_phylogeny:
     output:
         tree  = f"{RESULT_DIR}/{PROTEIN}_phylo.treefile"
     threads:
-        config["tree"]["iqtree"].get("threads", 16)
+        config['phylogeny']["tree"]["iqtree"].get("threads", 16)
     params:
         prefix   = f"{RESULT_DIR}/{PROTEIN}_phylo",
-        p        = config["tree"]["iqtree"],
-        optional = iqtree_optional_flags(config["tree"]["iqtree"])
+        p        = config['phylogeny']["tree"]["iqtree"],
+        optional = iqtree_optional_flags(config['phylogeny']["tree"]["iqtree"])
     conda:
-        f"{config['env_dir']}/phylogeny.yaml"
+        f"{ENV_DIR}/phylogeny.yaml"
     log:
         f"{LOG_DIR}/{PROTEIN}.iqtree.log"
     shell:
@@ -311,7 +330,7 @@ rule msa_to_itol:
     output:
         itol_msa = f"{RESULT_DIR}/itol_msa.txt"
     conda:
-        f"{config['env_dir']}/Reg.yaml"
+        f"{ENV_DIR}/Reg.yaml"
     shell:
         """
         python {CURRENT_DIR}/bin/units/msa_to_itol_dataset.py \
@@ -326,9 +345,9 @@ rule table2itol:
         annotation_dir = directory(f"{RESULT_DIR}/annotation"),    
         done_annot = touch(f"{RESULT_DIR}/annotation.done.flag")
     conda:
-        f"{config['env_dir']}/bio-r.yaml"
+        f"{ENV_DIR}/bio-r.yaml"
     params:
-        LOCUS_TAG = config.get("LOCUS_TAG", "locus_tag")
+        LOCUS_TAG = config['run'].get("LOCUS_TAG", "locus_tag")
     shell:
         """
         mkdir -p {output.annotation_dir}
@@ -352,14 +371,14 @@ rule upload_to_itol:
         annot_files = lambda wildcards: sorted(
             glob.glob(f"{RESULT_DIR}/annotation/*.txt")
         ),
-        default     = lambda wildcards: config.get("default_annotation") or [] ,
+        default     = lambda wildcards: config['phylogeny'].get("default_annotation") or [] ,
         marker      = f"{RESULT_DIR}/annotation.done.flag",
         itol_dir    = f"{EXPLORATION_DIR}/{PROTEIN}_itol_domains",
         itol_msa    = f"{RESULT_DIR}/itol_msa.txt"
     output:
         tree_ids = f"{RESULT_DIR}/{PROTEIN}_itol_uploaded.flag"
     params:
-        project   = config.get("itol_project", "Asgard"),
+        project   = config['phylogeny'].get("itol_project", "Asgard"),
         tree_name = f"{RUN_ID}_{PROTEIN}",
         all_annots = lambda wildcards, input: (
             sorted(glob.glob(f"{RESULT_DIR}/annotation/*.txt"))

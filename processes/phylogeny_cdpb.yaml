@@ -1,15 +1,17 @@
 run:
   id: cdpb_run4
+  phyl_id: cdpb_phyl_run_1
   protein_name: cdpb
-  pipeline: extraction_pipeline
+  pipeline: phylogeny_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: To find cdpb proteins in asgard using IPS id search
+  reason: To perform phylogeny of cdpb
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
   LOCUS_TAG: locus_tag
+
 SSN:
   RUN_SSN: True
   copy_to_windows: True
@@ -76,6 +78,51 @@ plot:
   ymax: 1500
 phylogeny:
   threads: 12
-  run_itol_upload: true
+  run_itol_upload: false
   itol_project: Asgard
-  madroot: false
+  madroot: false    
+  alignment:
+    method: mafft
+    famsa:
+      threads: 8
+      extra_args: ''
+    mafft:
+      mode: --auto
+      threads: 8
+      extra_args: '--maxiterate 1000'
+    muscle:
+      mode: -align
+      threads: 8
+
+  trimming:
+    method: clipkit
+    trimal:
+      mode: -automated1
+      extra_args: ''
+    bmge:
+      matrix: BLOSUM62
+      gap_rate: 0.5
+      entropy: 0.5
+      extra_args: ''
+    clipkit:
+      mode: smart-gap
+      extra_args: ''
+  tree:
+    method: iqtree
+    iqtree:
+      model: LG + c60 + F
+      seqtype: AA
+      bootstrap: 1000 # >95% good enough
+      bootstrap_method: -B
+      alrt: 1000 # if >85% good enough
+      outgroup: null
+      seed: 12345
+      ninit: 100
+      ntop: 20
+      nbest: 5
+      nstop: 200
+      niter: null
+      max_iter: 1000
+      epsilon: 0.01
+      threads: 8
+      extra_args: ''
