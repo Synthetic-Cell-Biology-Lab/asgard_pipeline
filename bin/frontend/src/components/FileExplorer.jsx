@@ -45,7 +45,12 @@ export default function FileExplorer() {
     }
   }
 
-  useEffect(() => { loadDirectory('database') }, [])
+  useEffect(() => {
+    const loadInitialDirectory = async () => {
+      await loadDirectory('database')
+    }
+    loadInitialDirectory()
+  }, [])
 
   return (
     <div className="explorer-shell">
