@@ -314,6 +314,20 @@ function BlastPanel({ onBack }) {
           </div>
         </div>
       )}
+      <div className="card">
+        <div className="card-header">
+          <StepBadge n={1} active done={false} />
+          <span className="step-label">Coming next</span>
+        </div>
+        <p className="landing-copy compact">
+          This landing route is ready for a dedicated BLAST form. The next GUI step should
+          be a focused query screen with sequence input, database selection, search options,
+          progress feedback, and downloadable/tabular results.
+        </p>
+        <div className="save-row">
+          <button className="btn primary" onClick={onBack}>← Back to landing</button>
+        </div>
+      </div>
     </main>
   )
 }
