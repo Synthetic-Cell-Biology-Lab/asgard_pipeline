@@ -39,7 +39,10 @@ export default function DagView({ runId, running }) {
 
   // Initial fetch + poll while running
   useEffect(() => {
-    fetchDag()
+    const loadDag = async () => {
+      await fetchDag()
+    }
+    loadDag()
     if (!running) return
     const id = setInterval(fetchDag, 3000)
     return () => clearInterval(id)
