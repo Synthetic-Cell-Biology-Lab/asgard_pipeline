@@ -66,17 +66,21 @@ MANUAL_GENOMES = config['inputs'].get("manual_genomes", {})
 # configurable (NCBI datasets is the portable default downloader).
 DOWNLOAD = config.get("download", {})
 GENOME_SOURCE = DOWNLOAD.get("source", "ncbi").lower()
+# GToTree supplies GTDB metadata alongside its accession list. In this mode,
+# retain that authoritative quality and taxonomy information instead of
+# recomputing it with CheckM2 or GTDB-Tk.
+GTOTREE_MODE = GENOME_SOURCE in {"gtt", "gtotree"}
 UPDATE_MODE = config["run"].get("update", True)
-DEDUPE_ENABLED = config.get("deduplication", {}).get("enabled", False)
+DEDUPE_ENABLED = config.get("deduplication", {}).get("enabled", False) and not GTOTREE_MODE
 GTDB = config.get("gtdb", {})
 # Preserve the historical behaviour for configurations that only provide the
 # GTDB-Tk database path.  Metadata mode is an explicit opt-in.
-RUN_GTDBTK = GTDB.get("run_gtdbtk", True)
+RUN_GTDBTK = GTDB.get("run_gtdbtk", True) and not GTOTREE_MODE
 GTDB_METADATA = GTDB.get("metadata_file", f"{STORE_DIR}/metadata/gtdb_ar53_metadata.tsv")
 GTDB_METADATA_URL = GTDB.get("metadata_url", "")
 
-if GENOME_SOURCE not in {"ncbi", "gtt"}:
-    raise ValueError("download.source must be either 'ncbi' or 'gtt'")
+if GENOME_SOURCE not in {"ncbi", "gtt", "gtotree"}:
+    raise ValueError("download.source must be one of 'ncbi', 'gtt', or 'gtotree'")
 
 
 def manual_accessions(org):
@@ -228,8 +232,8 @@ rule get_summary:
             DOWNLOAD.get("gtt_taxon", "asgardarchaeota")
         ),
         gtt_command=DOWNLOAD.get(
-            "gtt_command",
-            "gtt-get-accessions-from-GTDB"
+            "gtotree_command",
+            DOWNLOAD.get("gtt_command", "gtt-get-accessions-from-GTDB")
         )
 
     run:
@@ -239,7 +243,7 @@ rule get_summary:
 
         os.makedirs(os.path.dirname(output.summary), exist_ok=True)
 
-        if GENOME_SOURCE == "gtt":
+        if GTOTREE_MODE:
 
             # ---------------------------------------------------------
             # Dedicated temporary directory for this organism
@@ -764,19 +768,42 @@ rule checkm2:
         f"{config['run'].get('env_dir')}/checkm2.yaml"
     log:
         f"{LOG_DIR}/checkm2/{{org}}.log"
-    shell:
-        """
-        mkdir -p $(dirname {log})
-        checkm2 predict \
-            --input {input.genomes_dir} \
-            --output-directory {params.outdir} \
-            --database_path {params.db} \
-            --extension fna \
-            --threads {threads} \
-            --force > {log} 2>&1
-
-        touch {output.checkm2_flag}
-        """
+    run:
+        Path(output.quality_report).parent.mkdir(parents=True, exist_ok=True)
+        Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
+        if GTOTREE_MODE:
+            # GToTree metadata already provides CheckM2 estimates; do not run
+            # CheckM2 again. The normalized report preserves downstream inputs.
+            metadata = pd.read_csv(f"{RUN_DIR}/{wildcards.org}/genomes_summary.tsv", sep="\t", dtype=str)
+            accession_column = next((c for c in ("Assembly Accession", "accession", "genome", "user_genome") if c in metadata.columns), None)
+            if not accession_column or not {"checkm2_completeness", "checkm2_contamination"}.issubset(metadata.columns):
+                raise ValueError("GToTree metadata must contain accession, checkm2_completeness, and checkm2_contamination columns")
+            metadata["Name"] = metadata[accession_column].map(normalize_accession)
+            report = pd.DataFrame({
+                "Name": metadata["Name"],
+                "Completeness": pd.to_numeric(metadata["checkm2_completeness"], errors="coerce"),
+                "Contamination": pd.to_numeric(metadata["checkm2_contamination"], errors="coerce"),
+                "Completeness_Model_Used": metadata.get("checkm2_model", "metadata"),
+                "Translation_Table_Used": metadata.get("ncbi_translation_table", ""),
+                "Coding_Density": pd.to_numeric(metadata.get("coding_density", ""), errors="coerce"),
+                "Contig_N50": pd.to_numeric(metadata.get("n50_contigs", ""), errors="coerce"),
+                "Average_Gene_Length": pd.NA,
+                "Genome_Size": pd.to_numeric(metadata.get("genome_size", ""), errors="coerce"),
+                "GC_Content": pd.to_numeric(metadata.get("gc_percentage", ""), errors="coerce"),
+                "Total_Coding_Sequences": pd.to_numeric(metadata.get("protein_count", ""), errors="coerce"),
+                "Total_Contigs": pd.to_numeric(metadata.get("contig_count", ""), errors="coerce"),
+                "Max_Contig_Length": pd.to_numeric(metadata.get("longest_contig", ""), errors="coerce"),
+            })
+            requested = {normalize_accession(p) for p in Path(input.genomes_dir).glob("*.fna")}
+            report = report[report["Name"].isin(requested)]
+            missing = requested - set(report["Name"])
+            if missing:
+                raise ValueError(f"GToTree metadata has no quality data for: {', '.join(sorted(missing))}")
+            report.to_csv(output.quality_report, sep="\t", index=False)
+            Path(log[0]).write_text(f"Reused CheckM2 estimates for {len(report)} genomes from GToTree metadata.\n")
+        else:
+            shell("checkm2 predict --input {input.genomes_dir} --output-directory {params.outdir} --database_path {params.db} --extension fna --threads {threads} --force > {log} 2>&1")
+        Path(output.checkm2_flag).touch()
 
 
 rule link_filtered:
@@ -834,7 +861,8 @@ rule skder:
             shell("mkdir -p $(dirname {log}) && skder -g {input.genomes_dir} -o {output.derep_dir} -i {params.ani} -f {params.min_af} -c {threads} > {log} 2>&1")
         else:
             # Preserve the downstream interface without running skder: every
-            # CheckM2-passing genome is a representative.
+            # quality-passing genome is a representative. GToTree mode always
+            # takes this path because its metadata is already curated.
             for genome in Path(input.genomes_dir).glob("*.fna"):
                 target = representatives / genome.name
                 if not target.exists():
@@ -853,7 +881,7 @@ rule gtdbtk:
         genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}",
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
         db_dir      = ancient(GTDB["db_path"]) if RUN_GTDBTK else [],
-        metadata    = GTDB_METADATA if not RUN_GTDBTK else []
+        metadata    = (f"{RUN_DIR}/{{org}}/genomes_summary.tsv" if GTOTREE_MODE else GTDB_METADATA) if not RUN_GTDBTK else []
     output:
         outdir = directory(f"{RUN_DIR}/gtdbtk/{{org}}"),
         flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
@@ -878,19 +906,23 @@ rule gtdbtk:
             shell("mkdir -p $(dirname {log}); export GTDBTK_DATA_PATH={params.db}; gtdbtk classify_wf --genome_dir {input.genomes_dir}/Dereplicated_Representative_Genomes --out_dir {output.outdir} --extension {params.extension} --prefix {params.prefix} --min_perc_aa {params.min_perc_aa} --min_af {params.min_af} --cpus {threads} --pplacer_cpus {params.pplacer_cpus} --scratch_dir {params.scratch_dir} {params.extra_args} > {log} 2>&1")
         else:
             metadata = pd.read_csv(input.metadata, sep="\t", dtype=str)
-            genome_column = next((c for c in ("accession", "genome", "user_genome") if c in metadata.columns), None)
+            genome_column = next((c for c in ("Assembly Accession", "accession", "genome", "user_genome") if c in metadata.columns), None)
             classification_column = next((c for c in ("gtdb_taxonomy", "classification") if c in metadata.columns), None)
             if not genome_column or not classification_column:
-                raise ValueError("GTDB metadata must contain accession/genome and gtdb_taxonomy/classification columns")
+                raise ValueError("GTDB metadata must contain an accession column and gtdb_taxonomy/classification column")
             selected = {
                 normalize_accession(p)
                 for p in Path(input.genomes_dir, "Dereplicated_Representative_Genomes").glob("*.fna")
             }
-            metadata[genome_column] = metadata[genome_column].map(normalize_accession)
-            result = metadata[metadata[genome_column].isin(selected)][[genome_column, classification_column]].rename(columns={genome_column: "user_genome", classification_column: "classification"})
+            metadata["user_genome"] = metadata[genome_column].map(normalize_accession)
+            metadata["classification"] = metadata[classification_column]
+            result = metadata[metadata["user_genome"].isin(selected)].copy()
             missing = selected - set(result["user_genome"])
             if missing:
                 raise ValueError(f"GTDB metadata has no taxonomy for: {', '.join(sorted(missing))}")
+            # This is the GTDB-Tk-compatible handoff consumed by phylogeny and
+            # downstream taxonomy rules. Keep metadata columns too, so GToTree
+            # placement uses the retrieved metadata rather than a recomputation.
             result.to_csv(f"{output.outdir}/{params.prefix}.ar53.summary.tsv", sep="\t", index=False)
             Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
             Path(log[0]).write_text(f"Selected {len(result)} genomes from GTDB metadata.\n")
