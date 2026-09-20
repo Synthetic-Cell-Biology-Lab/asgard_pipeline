@@ -64,7 +64,9 @@ GENOME_SOURCE = DOWNLOAD.get("source", "ncbi").lower()
 UPDATE_MODE = config["run"].get("update", True)
 DEDUPE_ENABLED = config.get("deduplication", {}).get("enabled", False)
 GTDB = config.get("gtdb", {})
-RUN_GTDBTK = GTDB.get("run_gtdbtk", False)
+# Preserve the historical behaviour for configurations that only provide the
+# GTDB-Tk database path.  Metadata mode is an explicit opt-in.
+RUN_GTDBTK = GTDB.get("run_gtdbtk", True)
 GTDB_METADATA = GTDB.get("metadata_file", "")
 
 if GENOME_SOURCE not in {"ncbi", "gtt"}:
@@ -75,6 +77,14 @@ if not RUN_GTDBTK and not GTDB_METADATA:
 
 def manual_accessions(org):
     return [g["accession"] for g in MANUAL_GENOMES.get(org, [])]
+
+
+def normalize_accession(value):
+    """Return the accession represented by a GTDB or FASTA file identifier."""
+    accession = Path(str(value)).name
+    while accession.endswith(".fna"):
+        accession = accession[:-4]
+    return re.sub(r"^(RS_|GB_)", "", accession)
 
 
 def _manual_genome_info(accession):
@@ -351,7 +361,10 @@ rule link_run_genomes:
         )
     output:
         flag    = f"{RUN_DIR}/{{org}}/done.flag",
-        genomes = directory(f"{RUN_DIR}/{{org}}/genomes")
+        genomes = directory(f"{RUN_DIR}/{{org}}/genomes"),
+        # Records the per-organism membership of the canonical genome store.
+        # This prevents cumulative runs from mixing organisms.
+        manifest = f"{STORE_DIR}/organisms/{{org}}.accessions.txt"
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
     run:
@@ -359,6 +372,7 @@ rule link_run_genomes:
         import os
 
         os.makedirs(output.genomes, exist_ok=True)
+        manifest = Path(output.manifest)
 
         summary_df = pd.read_csv(input.summary, sep="\t")
         print(summary_df.columns)
@@ -370,21 +384,33 @@ rule link_run_genomes:
             if pd.notna(x)
         )
         accessions.update(manual_accessions(wildcards.org))
-        if UPDATE_MODE:
-            # An update creates a cumulative, isolated dataset; a fresh run
-            # contains only the accessions selected by this invocation.
-            accessions.update(p.stem for p in Path(STORE_DIR, "genomes").glob("*.fna"))
+        if UPDATE_MODE and manifest.exists():
+            # Accumulate only genomes previously associated with this
+            # organism, never the complete global store.
+            accessions.update(
+                line.strip() for line in manifest.read_text().splitlines()
+                if line.strip()
+            )
+
+        # Rebuild the run view so fresh runs cannot retain stale symlinks from
+        # an earlier run with the same id.
+        for genome in Path(output.genomes).iterdir():
+            if genome.is_symlink() or genome.is_file():
+                genome.unlink()
 
         for acc in accessions:
-            matches = glob(f"{STORE_DIR}/genomes/{acc}*.fna")
+            matches = glob(f"{STORE_DIR}/genomes/{acc}.fna")
             if matches:
                 src = os.path.abspath(matches[0])
-                dst = f"{output.genomes}/{os.path.basename(src)}.fna"
+                dst = f"{output.genomes}/{os.path.basename(src)}"
             # silently skipped if the .fna never made it into the store
             # (e.g. a "present"/already-annotated genome from before the
             # store existed) - same net effect as the old behaviour.
                 if os.path.exists(src) and not os.path.exists(dst):
                     os.symlink(src, dst)
+
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text("\n".join(sorted(accessions)) + "\n")
 
         with open(output.flag, "w") as f:
             f.write("done\n")
@@ -507,7 +533,7 @@ rule skder:
         ani    = config['deduplication']['ani'],
         min_af = config['deduplication']['min_af']
     conda:
-        f"{config['run'].get('env_dir')}/skder.yaml"
+        f"{config['run'].get('env_dir')}/skder.yaml" if DEDUPE_ENABLED else f"{config['run'].get('env_dir')}/Reg.yaml"
     run:
         representatives = Path(output.derep_dir, "Dereplicated_Representative_Genomes")
         representatives.mkdir(parents=True, exist_ok=True)
@@ -520,7 +546,9 @@ rule skder:
                 target = representatives / genome.name
                 if not target.exists():
                     target.symlink_to(genome.resolve())
-        Path(output.derep_list).write_text("\n".join(sorted(p.stem for p in representatives.glob("*.fna"))) + "\n")
+        Path(output.derep_list).write_text(
+            "\n".join(sorted(normalize_accession(p) for p in representatives.glob("*.fna"))) + "\n"
+        )
         Path(output.flag).touch()
 
 
@@ -556,8 +584,11 @@ rule gtdbtk:
             classification_column = next((c for c in ("gtdb_taxonomy", "classification") if c in metadata.columns), None)
             if not genome_column or not classification_column:
                 raise ValueError("GTDB metadata must contain accession/genome and gtdb_taxonomy/classification columns")
-            selected = {p.stem for p in Path(input.genomes_dir, "Dereplicated_Representative_Genomes").glob("*.fna")}
-            metadata[genome_column] = metadata[genome_column].str.replace(r"^(RS_|GB_)", "", regex=True)
+            selected = {
+                normalize_accession(p)
+                for p in Path(input.genomes_dir, "Dereplicated_Representative_Genomes").glob("*.fna")
+            }
+            metadata[genome_column] = metadata[genome_column].map(normalize_accession)
             result = metadata[metadata[genome_column].isin(selected)][[genome_column, classification_column]].rename(columns={genome_column: "user_genome", classification_column: "classification"})
             missing = selected - set(result["user_genome"])
             if missing:
