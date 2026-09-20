@@ -20,9 +20,12 @@ CheckM2 always remains in the workflow. Use `deduplication.enabled: false`
 Set it to `true` to enable ANI dereplication.
 
 To use GTDB's verified taxonomy instead of recomputing it, set
-`gtdb.run_gtdbtk: false` and provide `gtdb.metadata_file`. The metadata must
-be tab-separated and contain an accession-like column (`accession`, `genome`,
-or `user_genome`) plus `gtdb_taxonomy` or `classification`. Set
+`gtdb.run_gtdbtk: false`, set `gtdb.metadata_url` to the archaeal GTDB
+metadata release URL, and choose the local cache path with
+`gtdb.metadata_file`. The pipeline downloads and decompresses the metadata
+when the cache is absent. The metadata must be tab-separated and contain an
+accession-like column (`accession`, `genome`, or `user_genome`) plus
+`gtdb_taxonomy` or `classification`. Set
 `gtdb.run_gtdbtk: true` to run GTDB-Tk instead. `run_gtdbtk` defaults to
 `true` for compatibility with existing configurations that specify only
 `gtdb.db_path`.

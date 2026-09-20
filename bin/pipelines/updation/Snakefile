@@ -67,12 +67,11 @@ GTDB = config.get("gtdb", {})
 # Preserve the historical behaviour for configurations that only provide the
 # GTDB-Tk database path.  Metadata mode is an explicit opt-in.
 RUN_GTDBTK = GTDB.get("run_gtdbtk", True)
-GTDB_METADATA = GTDB.get("metadata_file", "")
+GTDB_METADATA = GTDB.get("metadata_file", f"{STORE_DIR}/metadata/gtdb_ar53_metadata.tsv")
+GTDB_METADATA_URL = GTDB.get("metadata_url", "")
 
 if GENOME_SOURCE not in {"ncbi", "gtt"}:
     raise ValueError("download.source must be either 'ncbi' or 'gtt'")
-if not RUN_GTDBTK and not GTDB_METADATA:
-    raise ValueError("gtdb.metadata_file is required when gtdb.run_gtdbtk is false")
 
 
 def manual_accessions(org):
@@ -557,7 +556,8 @@ rule gtdbtk:
     input:
         genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}",
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
-        db_dir      = ancient(GTDB["db_path"] if RUN_GTDBTK else GTDB_METADATA)
+        db_dir      = ancient(GTDB["db_path"]) if RUN_GTDBTK else [],
+        metadata    = GTDB_METADATA if not RUN_GTDBTK else []
     output:
         outdir = directory(f"{RUN_DIR}/gtdbtk/{{org}}"),
         flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
@@ -579,7 +579,7 @@ rule gtdbtk:
         if RUN_GTDBTK:
             shell("export GTDBTK_DATA_PATH={params.db}; gtdbtk classify_wf --genome_dir {input.genomes_dir}/Dereplicated_Representative_Genomes --out_dir {output.outdir} --extension {params.extension} --prefix {params.prefix} --min_perc_aa {params.min_perc_aa} --min_af {params.min_af} --cpus {threads} --pplacer_cpus {params.pplacer_cpus} --scratch_dir {params.scratch_dir} {params.extra_args}")
         else:
-            metadata = pd.read_csv(GTDB_METADATA, sep="\t", dtype=str)
+            metadata = pd.read_csv(input.metadata, sep="\t", dtype=str)
             genome_column = next((c for c in ("accession", "genome", "user_genome") if c in metadata.columns), None)
             classification_column = next((c for c in ("gtdb_taxonomy", "classification") if c in metadata.columns), None)
             if not genome_column or not classification_column:
@@ -595,6 +595,31 @@ rule gtdbtk:
                 raise ValueError(f"GTDB metadata has no taxonomy for: {', '.join(sorted(missing))}")
             result.to_csv(f"{output.outdir}/{params.prefix}.ar53.summary.tsv", sep="\t", index=False)
         Path(output.flag).touch()
+
+
+rule retrieve_gtdb_metadata:
+    """Cache the GTDB archaeal metadata used by verified-taxonomy mode."""
+    output:
+        metadata = GTDB_METADATA
+    params:
+        url = GTDB_METADATA_URL
+    conda:
+        f"{config['run'].get('env_dir')}/Reg.yaml"
+    shell:
+        """
+        if [ -z "{params.url}" ]; then
+            echo "gtdb.metadata_url is required to retrieve missing GTDB metadata" >&2
+            exit 2
+        fi
+
+        mkdir -p $(dirname {output.metadata})
+        TMP_METADATA=$(mktemp "$(dirname {output.metadata})/.gtdb-metadata.XXXXXX")
+        case "{params.url}" in
+            *.gz) curl --fail --location --silent --show-error "{params.url}" | gzip -dc > "$TMP_METADATA" ;;
+            *)    curl --fail --location --silent --show-error "{params.url}" > "$TMP_METADATA" ;;
+        esac
+        mv "$TMP_METADATA" {output.metadata}
+        """
 
 
 

@@ -44,9 +44,10 @@ pipeline_stages:
   - filtered
   - derep
 gtdb:
-  # false reads verified GTDB taxonomy from metadata_file rather than running GTDB-Tk.
+  # false downloads verified GTDB taxonomy to metadata_file rather than running GTDB-Tk.
   run_gtdbtk: false
-  metadata_file: /path/to/bac120_metadata.tsv
+  metadata_file: /home/anirudh/asgard_pipeline/database/raw_genomes/store/metadata/gtdb_ar53_metadata.tsv
+  metadata_url: https://data.gtdb.ecogenomic.org/releases/release232/232.0/ar53_metadata_r232.tsv.gz
   db_path:      /home/anirudh/asgard_pipeline/database/software_dbs/release232
   mash_db:      /path/to/gtdbtk_db/mash/gtdb.msh   # reused across runs
   extension:    fna
