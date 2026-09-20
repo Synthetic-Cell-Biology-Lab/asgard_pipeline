@@ -15,6 +15,15 @@ contents are ignored. Set it to `true` to include previously selected genomes
 for the same organism alongside the new selection; the store membership
 manifest prevents genomes from another configured organism from being added.
 
+## Logs
+
+The long-running acquisition, quality-control, classification, and annotation
+rules create individual log files beneath
+`<run.log_dir>/updation/<run.id>/`. Logs are further grouped by rule and, for
+Bakta and InterProScan, by organism and genome. This keeps diagnostics from a
+given run separate from previous runs while preserving the output produced by
+each external tool.
+
 CheckM2 always remains in the workflow. Use `deduplication.enabled: false`
 (the default) to skip skder and pass every CheckM2-passing genome onward.
 Set it to `true` to enable ANI dereplication.

@@ -43,6 +43,11 @@ RUN_ID     = config["run"].get("id", "default")
 STORE_DIR  = f"{OUTDIR}/store"
 MASTER_DIR = f"{OUTDIR}/master"
 RUN_DIR    = f"{OUTDIR}/runs/{RUN_ID}"
+# Keep tool output separate by pipeline run so concurrent or historical runs
+# never overwrite one another's diagnostics.
+LOG_DIR    = os.path.abspath(
+    f"{config['run'].get('log_dir', f'{RUN_DIR}/logs')}/updation/{RUN_ID}"
+)
 
 #
 # config.yaml can optionally declare genomes to inject directly, bypassing
@@ -205,6 +210,8 @@ rule get_summary:
 
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/get_summary/{{org}}.log"
 
     params:
         name=lambda wc: get_org_param(wc, "name"),
@@ -248,8 +255,10 @@ rule get_summary:
             # Run GToTree helper inside the Snakemake Conda environment
             # ---------------------------------------------------------
             shell(
+                "mkdir -p $(dirname {log}) && "
                 "cd '{tmp_dir}' && "
-                "{params.gtt_command} -t '{params.gtt_taxon}'"
+                "{params.gtt_command} -t '{params.gtt_taxon}' "
+                "> '{log}' 2>&1"
             )
 
             # ---------------------------------------------------------
@@ -315,7 +324,8 @@ rule get_summary:
 
         else:
             shell(
-                r'''TAXID=$(datasets summary taxonomy taxon "{params.name}" \
+                r'''mkdir -p $(dirname {log})
+                TAXID=$(datasets summary taxonomy taxon "{params.name}" \
                     --as-json-lines |
                     dataformat tsv taxonomy \
                     --template tax-summary |
@@ -326,7 +336,7 @@ rule get_summary:
                     {params.refseq} \
                     --as-json-lines |
                     dataformat tsv genome \
-                    > {output.summary}'''
+                    > {output.summary} 2> {log}'''
             )
 
 
@@ -390,17 +400,21 @@ rule download_genomes:
         zipfile = f"{RUN_DIR}/{{org}}/dataset.zip"
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/download_genomes/{{org}}.log"
     shell:
         """
+        mkdir -p $(dirname {log})
         if [ -s {input.accession_list} ]; then
             datasets download genome accession \
                 --inputfile {input.accession_list} \
                 --include genome \
                 --filename {output.zipfile} \
-                --dehydrated
+                --dehydrated > {log} 2>&1
         else
             mkdir -p $(dirname {output.zipfile})
             : > {output.zipfile}
+            echo "No genomes require downloading." > {log}
         fi
         """
 
@@ -419,23 +433,31 @@ rule extract_genomes:
         flag = f"{RUN_DIR}/{{org}}/download_done.flag"
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/extract_genomes/{{org}}.log"
     shell:
         """
+        mkdir -p $(dirname {log})
         mkdir -p {STORE_DIR}/genomes
         EXTRACT_DIR={RUN_DIR}/{wildcards.org}/extracted
 
         if [ -s {input.zipfile} ]; then
             mkdir -p $EXTRACT_DIR
-            unzip -o {input.zipfile} -d $EXTRACT_DIR
+            unzip -o {input.zipfile} -d $EXTRACT_DIR > {log} 2>&1
 
-            datasets rehydrate --directory $EXTRACT_DIR
+            datasets rehydrate --directory $EXTRACT_DIR >> {log} 2>&1
 
             find $EXTRACT_DIR/ncbi_dataset/data/ -name "*.fna" | while read -r f; do
                 acc=$(basename "$f" .fna)
                 if [ ! -f {STORE_DIR}/genomes/"$acc".fna ]; then
                     cp "$f" {STORE_DIR}/genomes/"$acc".fna
+                    echo "Imported $acc" >> {log}
                 fi
             done
+        fi
+
+        if [ ! -s {input.zipfile} ]; then
+            echo "No downloaded archive to extract." > {log}
         fi
 
         touch {output.flag}
@@ -576,15 +598,18 @@ rule checkm2:
 
     conda:
         f"{config['run'].get('env_dir')}/checkm2.yaml"
+    log:
+        f"{LOG_DIR}/checkm2/{{org}}.log"
     shell:
         """
+        mkdir -p $(dirname {log})
         checkm2 predict \
             --input {input.genomes_dir} \
             --output-directory {params.outdir} \
             --database_path {params.db} \
             --extension fna \
             --threads {threads} \
-            --force
+            --force > {log} 2>&1
 
         touch {output.checkm2_flag}
         """
@@ -636,11 +661,13 @@ rule skder:
         min_af = config['deduplication']['min_af']
     conda:
         f"{config['run'].get('env_dir')}/skder.yaml" if DEDUPE_ENABLED else f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/skder/{{org}}.log"
     run:
         representatives = Path(output.derep_dir, "Dereplicated_Representative_Genomes")
         representatives.mkdir(parents=True, exist_ok=True)
         if DEDUPE_ENABLED:
-            shell("skder -g {input.genomes_dir} -o {output.derep_dir} -i {params.ani} -f {params.min_af} -c {threads}")
+            shell("mkdir -p $(dirname {log}) && skder -g {input.genomes_dir} -o {output.derep_dir} -i {params.ani} -f {params.min_af} -c {threads} > {log} 2>&1")
         else:
             # Preserve the downstream interface without running skder: every
             # CheckM2-passing genome is a representative.
@@ -648,6 +675,8 @@ rule skder:
                 target = representatives / genome.name
                 if not target.exists():
                     target.symlink_to(genome.resolve())
+            Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
+            Path(log[0]).write_text("Deduplication disabled; linked all CheckM2-passing genomes.\n")
         Path(output.derep_list).write_text(
             "\n".join(sorted(normalize_accession(p) for p in representatives.glob("*.fna"))) + "\n"
         )
@@ -677,10 +706,12 @@ rule gtdbtk:
         extra_args   = config["gtdb"].get("extra_args",   "")
     conda:
         f"{config['run'].get('env_dir')}/gtdbtk.yaml" if RUN_GTDBTK else f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/gtdbtk/{{org}}.log"
     run:
         os.makedirs(output.outdir, exist_ok=True)
         if RUN_GTDBTK:
-            shell("export GTDBTK_DATA_PATH={params.db}; gtdbtk classify_wf --genome_dir {input.genomes_dir}/Dereplicated_Representative_Genomes --out_dir {output.outdir} --extension {params.extension} --prefix {params.prefix} --min_perc_aa {params.min_perc_aa} --min_af {params.min_af} --cpus {threads} --pplacer_cpus {params.pplacer_cpus} --scratch_dir {params.scratch_dir} {params.extra_args}")
+            shell("mkdir -p $(dirname {log}); export GTDBTK_DATA_PATH={params.db}; gtdbtk classify_wf --genome_dir {input.genomes_dir}/Dereplicated_Representative_Genomes --out_dir {output.outdir} --extension {params.extension} --prefix {params.prefix} --min_perc_aa {params.min_perc_aa} --min_af {params.min_af} --cpus {threads} --pplacer_cpus {params.pplacer_cpus} --scratch_dir {params.scratch_dir} {params.extra_args} > {log} 2>&1")
         else:
             metadata = pd.read_csv(input.metadata, sep="\t", dtype=str)
             genome_column = next((c for c in ("accession", "genome", "user_genome") if c in metadata.columns), None)
@@ -697,6 +728,8 @@ rule gtdbtk:
             if missing:
                 raise ValueError(f"GTDB metadata has no taxonomy for: {', '.join(sorted(missing))}")
             result.to_csv(f"{output.outdir}/{params.prefix}.ar53.summary.tsv", sep="\t", index=False)
+            Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
+            Path(log[0]).write_text(f"Selected {len(result)} genomes from GTDB metadata.\n")
         Path(output.flag).touch()
 
 
@@ -708,8 +741,11 @@ rule retrieve_gtdb_metadata:
         url = GTDB_METADATA_URL
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/retrieve_gtdb_metadata.log"
     shell:
         """
+        mkdir -p $(dirname {log})
         if [ -z "{params.url}" ]; then
             echo "gtdb.metadata_url is required to retrieve missing GTDB metadata" >&2
             exit 2
@@ -718,10 +754,11 @@ rule retrieve_gtdb_metadata:
         mkdir -p $(dirname {output.metadata})
         TMP_METADATA=$(mktemp "$(dirname {output.metadata})/.gtdb-metadata.XXXXXX")
         case "{params.url}" in
-            *.gz) curl --fail --location --silent --show-error "{params.url}" | gzip -dc > "$TMP_METADATA" ;;
-            *)    curl --fail --location --silent --show-error "{params.url}" > "$TMP_METADATA" ;;
+            *.gz) curl --fail --location --silent --show-error "{params.url}" 2> {log} | gzip -dc > "$TMP_METADATA" ;;
+            *)    curl --fail --location --silent --show-error "{params.url}" > "$TMP_METADATA" 2> {log} ;;
         esac
         mv "$TMP_METADATA" {output.metadata}
+        echo "Cached GTDB metadata at {output.metadata}" >> {log}
         """
 
 
@@ -772,6 +809,8 @@ rule taxa_counts:
         plot = f"{RUN_DIR}/gtdbtk/{{org}}_taxa_count.svg"
     conda:
         f"{config['run'].get('env_dir')}/bio-r.yaml"
+    log:
+        f"{LOG_DIR}/taxa_counts/{{org}}.log"
     message:
         """
         ==========================================
@@ -780,9 +819,10 @@ rule taxa_counts:
         """
     shell:
         """
+        mkdir -p $(dirname {log})
         Rscript {CURRENT_DIR}/bin/units/plot_taxa_counts.r \
             -i {input.csv} \
-            -o {output.plot}
+            -o {output.plot} > {log} 2>&1
         """
 
 
@@ -903,9 +943,12 @@ rule bakta:
     threads: 4
     conda:
         f"{config['run'].get('env_dir')}/bakta.yaml"
+    log:
+        f"{LOG_DIR}/bakta/{{org}}/{{genome}}.log"
     shell:
         """
         mkdir -p {params.outdir}
+        mkdir -p $(dirname {log})
 
         bakta \
             --db {params.bakta_db} \
@@ -913,7 +956,7 @@ rule bakta:
             --prefix {params.prefix} \
             --threads {threads} \
             --force \
-            {input.genome}
+            {input.genome} > {log} 2>&1
         """
 
 
@@ -931,9 +974,11 @@ rule interproscan:
     threads: 16
     resources:
         mem_mb = 30000
+    log:
+        f"{LOG_DIR}/interproscan/{{org}}/{{genome}}.log"
     shell:
         """
-        mkdir -p interpro_temp/{wildcards.genome} logs
+        mkdir -p interpro_temp/{wildcards.genome} $(dirname {log})
 
         sed '/^>/! s/\*//g' {input.faa} > {params.clean}
 
@@ -945,7 +990,7 @@ rule interproscan:
             -cpu {threads} \
             -T interpro_temp/{wildcards.genome} \
             -b {params.base} \
-            > logs/{wildcards.genome}.log 2>&1
+            > {log} 2>&1
 
         rm -f {params.clean}
         """
