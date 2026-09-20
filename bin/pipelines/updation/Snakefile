@@ -304,11 +304,14 @@ rule get_summary:
                 dtype=str
             )
 
-            # Remove GB_ prefix from the accession column
+
+            # Remove GB_ or RS_ prefix and rename column to Assembly Accession
             metadata["Assembly Accession"] = (
-                metadata["Assembly Accession"]
-                .str.replace(r"^GB_", "", regex=True)
+                metadata["accession"]
+                .str.replace(r"^(?:GB_|RS_)", "", regex=True)
             )
+
+            metadata.drop(columns=["accession"], inplace=True)
 
             # Write normalized metadata
             metadata.to_csv(
@@ -462,79 +465,240 @@ rule extract_genomes:
 
         touch {output.flag}
         """
-
-
 rule link_run_genomes:
     """
-    Assembles this run's containerized genome directory using only symlinks
-    into STORE_DIR. This is the single place where automatically-downloaded
-    genomes (from `extract_genomes`) and manually-added genomes (feature 3,
-    from `add_manual_genome`) converge into one view for this run - without
-    duplicating any underlying .fna bytes on disk.
+    Assemble this run's genome directory using symlinks into STORE_DIR.
 
-    Produces the same `done.flag` / `genomes` outputs that downstream rules
-    (checkm2, link_filtered, skder, gtdbtk, ...) already expect, so nothing
-    further down the DAG needs to change.
+    Automatically downloaded genomes and manually added genomes converge
+    into RUN_DIR/{org}/genomes without duplicating the underlying .fna files.
+
+    Genome files are searched recursively inside STORE_DIR/genomes.
     """
+
     input:
-        download_flag  = f"{RUN_DIR}/{{org}}/download_done.flag",
-        summary        = f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
-        manual_genomes = lambda wc: expand(
+        download_flag=f"{RUN_DIR}/{{org}}/download_done.flag",
+        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+        manual_genomes=lambda wc: expand(
             f"{STORE_DIR}/genomes/{{accession}}.fna",
             accession=manual_accessions(wc.org)
         )
+
     output:
-        flag    = f"{RUN_DIR}/{{org}}/done.flag",
-        genomes = directory(f"{RUN_DIR}/{{org}}/genomes"),
-        # Records the per-organism membership of the canonical genome store.
-        # This prevents cumulative runs from mixing organisms.
-        manifest = f"{STORE_DIR}/organisms/{{org}}.accessions.txt"
+        flag=f"{RUN_DIR}/{{org}}/done.flag",
+        genomes=directory(f"{RUN_DIR}/{{org}}/genomes"),
+        manifest=f"{STORE_DIR}/organisms/{{org}}.accessions.txt"
+
+    log:
+        f"{LOG_DIR}/link_genomes/{{org}}.log"
+
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
+
     run:
-        import pandas as pd
         import os
+        import pandas as pd
+        from pathlib import Path
 
-        os.makedirs(output.genomes, exist_ok=True)
+        # ------------------------------------------------------------
+        # Directories
+        # ------------------------------------------------------------
+
+        genomes_dir = Path(output.genomes)
+        genomes_dir.mkdir(parents=True, exist_ok=True)
+
         manifest = Path(output.manifest)
+        manifest.parent.mkdir(parents=True, exist_ok=True)
 
-        summary_df = pd.read_csv(input.summary, sep="\t")
-        print(summary_df.columns)
-        print(summary_df.head())
-        print(len(summary_df))
-        accessions = set(
-            str(x).strip()
-            for x in summary_df["Assembly Accession"]
-            if pd.notna(x)
-        )
-        accessions.update(manual_accessions(wildcards.org))
-        if UPDATE_MODE and manifest.exists():
-            # Accumulate only genomes previously associated with this
-            # organism, never the complete global store.
-            accessions.update(
-                line.strip() for line in manifest.read_text().splitlines()
-                if line.strip()
+        store_dir = Path(STORE_DIR) / "genomes"
+
+        if not store_dir.exists():
+            raise FileNotFoundError(
+                f"Genome store does not exist: {store_dir}"
             )
 
-        # Rebuild the run view so fresh runs cannot retain stale symlinks from
-        # an earlier run with the same id.
-        for genome in Path(output.genomes).iterdir():
+        # ------------------------------------------------------------
+        # Read accessions from summary
+        # ------------------------------------------------------------
+
+        summary_df = pd.read_csv(
+            input.summary,
+            sep="\t",
+            dtype=str
+        )
+
+        print("Summary columns:")
+        print(summary_df.columns.tolist())
+
+        if "Assembly Accession" not in summary_df.columns:
+            raise ValueError(
+                "'Assembly Accession' column not found in "
+                f"{input.summary}. Columns found: "
+                f"{summary_df.columns.tolist()}"
+            )
+
+        accessions = {
+            str(acc).strip()
+            for acc in summary_df["Assembly Accession"]
+            if pd.notna(acc) and str(acc).strip()
+        }
+
+        # ------------------------------------------------------------
+        # Add manually specified genomes
+        # ------------------------------------------------------------
+
+        manual = {
+            str(acc).strip()
+            for acc in manual_accessions(wildcards.org)
+            if str(acc).strip()
+        }
+
+        accessions.update(manual)
+
+        print(f"Accessions from summary: {len(accessions - manual)}")
+        print(f"Manual accessions: {len(manual)}")
+
+        # ------------------------------------------------------------
+        # Update mode
+        #
+        # Keep genomes previously associated with this organism.
+        # ------------------------------------------------------------
+
+        if UPDATE_MODE and manifest.exists():
+
+            previous = {
+                line.strip()
+                for line in manifest.read_text().splitlines()
+                if line.strip()
+            }
+
+            accessions.update(previous)
+
+            print(
+                f"Previously associated accessions retained: "
+                f"{len(previous)}"
+            )
+
+        print(f"Total accessions to link: {len(accessions)}")
+
+        # ------------------------------------------------------------
+        # Remove existing contents of the run genome directory
+        # ------------------------------------------------------------
+
+        for genome in genomes_dir.iterdir():
+
             if genome.is_symlink() or genome.is_file():
                 genome.unlink()
 
-        for acc in accessions:
-            matches = glob(f"{STORE_DIR}/genomes/{acc}.fna")
-            if matches:
-                src = os.path.abspath(matches[0])
-                dst = f"{output.genomes}/{os.path.basename(src)}"
-            # silently skipped if the .fna never made it into the store
-            # (e.g. a "present"/already-annotated genome from before the
-            # store existed) - same net effect as the old behaviour.
-                if os.path.exists(src) and not os.path.exists(dst):
-                    os.symlink(src, dst)
+            elif genome.is_dir():
+                import shutil
+                shutil.rmtree(genome)
 
-        manifest.parent.mkdir(parents=True, exist_ok=True)
-        manifest.write_text("\n".join(sorted(accessions)) + "\n")
+        # ------------------------------------------------------------
+        # Link genomes
+        #
+        # IMPORTANT:
+        # Search recursively through STORE_DIR/genomes.
+        # ------------------------------------------------------------
+
+        linked = []
+        missing = []
+        duplicates = []
+
+        for acc in sorted(accessions):
+
+            matches = list(
+                store_dir.rglob(f"{acc}*.fna")
+            )
+
+            # --------------------------------------------------------
+            # Genome not found anywhere in the store
+            # --------------------------------------------------------
+
+            if not matches:
+                missing.append(acc)
+                continue
+
+            # --------------------------------------------------------
+            # Multiple copies found
+            # --------------------------------------------------------
+
+            if len(matches) > 1:
+
+                duplicates.append(
+                    (acc, matches)
+                )
+
+                print(
+                    f"WARNING: Multiple genome files found for "
+                    f"{acc}:"
+                )
+
+                for match in matches:
+                    print(f"    {match}")
+
+            # --------------------------------------------------------
+            # Use the first matching genome
+            # --------------------------------------------------------
+
+            src = matches[0]
+
+            # Keep the canonical filename in the run directory
+            dst = genomes_dir / src.name
+
+            # Remove an existing destination if necessary
+            if dst.exists() or dst.is_symlink():
+                dst.unlink()
+
+            # Create absolute symlink
+            os.symlink(
+                src.resolve(),
+                dst
+            )
+
+            linked.append(acc)
+
+            print(
+                f"Linked: {acc}"
+                f"\n    {src}"
+                f"\n    -> {dst}"
+            )
+
+        # ------------------------------------------------------------
+        # Write manifest
+        #
+        # Keep the complete accession set, including genomes that were
+        # missing from the store.
+        # ------------------------------------------------------------
+
+        manifest.write_text(
+            "\n".join(sorted(accessions)) + "\n"
+        )
+
+        # ------------------------------------------------------------
+        # Report
+        # ------------------------------------------------------------
+
+        print()
+        print("=" * 60)
+        print("Genome linking summary")
+        print("=" * 60)
+        print(f"Total requested : {len(accessions)}")
+        print(f"Linked          : {len(linked)}")
+        print(f"Missing         : {len(missing)}")
+        print(f"Duplicates      : {len(duplicates)}")
+        print("=" * 60)
+
+        if missing:
+
+            print()
+            print("Missing genomes:")
+
+            for acc in missing:
+                print(f"  {acc}")
+
+        # ------------------------------------------------------------
+        # Completion flag
+        # ------------------------------------------------------------
 
         with open(output.flag, "w") as f:
             f.write("done\n")
