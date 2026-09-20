@@ -1,6 +1,28 @@
 # Database Updation Pipeline
 
-`bin/pipelines/updation/Snakefile` updates the local genome/protein database. It prepares genome download lists, downloads/extracts/link genomes, runs quality/taxonomy/annotation tools, and collates genome/protein summary tables.
+`bin/pipelines/updation/Snakefile` builds either an isolated genome/protein set or a cumulative update of the local database. It prepares genome download lists, downloads/extracts/link genomes, runs quality/annotation tools, and collates genome/protein summary tables.
+
+## Configuration
+
+Set `download.source` to `gtt` to obtain GTDB-verified accessions with
+`gtt-get-accessions -t <download.gtt_taxon>` (the default taxon is
+`asgardarchaeota`), or to `ncbi` to retain the NCBI taxon-search workflow.
+Downloads are still retrieved with NCBI Datasets after the accession list is
+selected, so both sources produce the same normalized FASTA layout.
+
+`run.update: false` makes a fresh isolated set: prior store and annotation
+contents are ignored. Set it to `true` to include genomes already in the
+canonical store alongside the new selection.
+
+CheckM2 always remains in the workflow. Use `deduplication.enabled: false`
+(the default) to skip skder and pass every CheckM2-passing genome onward.
+Set it to `true` to enable ANI dereplication.
+
+To use GTDB's verified taxonomy instead of recomputing it, set
+`gtdb.run_gtdbtk: false` and provide `gtdb.metadata_file`. The metadata must
+be tab-separated and contain an accession-like column (`accession`, `genome`,
+or `user_genome`) plus `gtdb_taxonomy` or `classification`. Set
+`gtdb.run_gtdbtk: true` to run GTDB-Tk instead.
 
 ## Main rules and sub-rules
 

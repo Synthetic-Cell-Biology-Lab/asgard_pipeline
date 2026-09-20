@@ -19,6 +19,7 @@ import yaml
 import os
 from pathlib import Path
 import pandas as pd
+import subprocess
 
 configfile: "config.yaml"
 
@@ -54,6 +55,22 @@ RUN_DIR    = f"{OUTDIR}/runs/{RUN_ID}"
 #         path: /data/manual/my_mag.fna   # local FASTA, copied in as-is
 #
 MANUAL_GENOMES = config['inputs'].get("manual_genomes", {})
+
+# Genome acquisition and taxonomy are deliberately separate switches.  GTDB
+# accessions can be retrieved through gtt while the sequence archive remains
+# configurable (NCBI datasets is the portable default downloader).
+DOWNLOAD = config.get("download", {})
+GENOME_SOURCE = DOWNLOAD.get("source", "ncbi").lower()
+UPDATE_MODE = config["run"].get("update", True)
+DEDUPE_ENABLED = config.get("deduplication", {}).get("enabled", False)
+GTDB = config.get("gtdb", {})
+RUN_GTDBTK = GTDB.get("run_gtdbtk", False)
+GTDB_METADATA = GTDB.get("metadata_file", "")
+
+if GENOME_SOURCE not in {"ncbi", "gtt"}:
+    raise ValueError("download.source must be either 'ncbi' or 'gtt'")
+if not RUN_GTDBTK and not GTDB_METADATA:
+    raise ValueError("gtdb.metadata_file is required when gtdb.run_gtdbtk is false")
 
 
 def manual_accessions(org):
@@ -175,28 +192,29 @@ rule get_summary:
         f"{config['run'].get('env_dir')}/Reg.yaml"
     params:
         name=lambda wc: get_org_param(wc, "name"),
-        level=lambda wc: " ".join(
-            f"--assembly-level {l}"
-            for l in (get_org_param(wc, "assembly_level") or [])
-        ),
-        refseq=lambda wc: "--reference" if get_org_param(wc, "refseq_only") else ""
-    shell:
-        r"""
-        # The input given is the name of the organism, convert to taxa id
-        TAXID=$(
-            datasets summary taxonomy taxon "{params.name}" \
-                --as-json-lines \
-            | dataformat tsv taxonomy --template tax-summary \
-            | awk 'NR==2 {{print $2}}'
-        )
-        
-        datasets summary genome taxon "$TAXID" \
-            {params.level} \
-            {params.refseq} \
-            --as-json-lines \
-        | dataformat tsv genome \
-        > {output.summary}
-        """
+        level=lambda wc: " ".join(f"--assembly-level {l}" for l in (get_org_param(wc, "assembly_level") or [])),
+        refseq=lambda wc: "--reference" if get_org_param(wc, "refseq_only") else "",
+        gtt_taxon=lambda wc: get_org_param(wc, "gtt_taxon", DOWNLOAD.get("gtt_taxon", "asgardarchaeota")),
+        gtt_command=DOWNLOAD.get("gtt_command", "gtt-get-accessions")
+    run:
+        os.makedirs(os.path.dirname(output.summary), exist_ok=True)
+        if GENOME_SOURCE == "gtt":
+            # gtt returns one accession per line.  Normalize its output to the
+            # NCBI-summary column consumed by the remainder of this workflow.
+            result = subprocess.run(
+                [params.gtt_command, "-t", params.gtt_taxon],
+                check=True, text=True, capture_output=True,
+            )
+            accessions = sorted({
+                line.split()[0] for line in result.stdout.splitlines()
+                if line.strip() and not line.lower().startswith("accession")
+            })
+            pd.DataFrame({"Assembly Accession": accessions}).to_csv(output.summary, sep="\t", index=False)
+        else:
+            shell(
+                r'''TAXID=$(datasets summary taxonomy taxon "{params.name}" --as-json-lines | dataformat tsv taxonomy --template tax-summary | awk 'NR==2 {{print $2}}')
+                datasets summary genome taxon "$TAXID" {params.level} {params.refseq} --as-json-lines | dataformat tsv genome > {output.summary}'''
+            )
 
 
 
@@ -229,7 +247,8 @@ rule prepare_download_list:
                 if line.strip()
             ]
 
-        # anything already downloaded (by this or a previous run) lives here
+        # In fresh mode only genomes selected for this run are considered.
+        # Update mode reuses the canonical store and annotation inventory.
         store_dir = Path(STORE_DIR, "genomes")
         store_dir.mkdir(parents=True, exist_ok=True)
         store_have = {p.stem for p in store_dir.glob("*.fna")}
@@ -237,12 +256,10 @@ rule prepare_download_list:
         # manual additions are injected separately, never auto-downloaded
         manual = set(manual_accessions(wildcards.org))
 
-        to_be_downloaded = (
-            set(summary_df['Assembly Accession'].tolist())
-            - set(present_list)
-            - store_have
-            - manual
-        )
+        selected = set(summary_df['Assembly Accession'].dropna().astype(str).tolist()) - manual
+        to_be_downloaded = selected - manual
+        if UPDATE_MODE:
+            to_be_downloaded -= set(present_list) | store_have
 
         with open(output.accession_list, 'w') as out:
             out.write("\n".join(sorted(to_be_downloaded)))
@@ -353,6 +370,10 @@ rule link_run_genomes:
             if pd.notna(x)
         )
         accessions.update(manual_accessions(wildcards.org))
+        if UPDATE_MODE:
+            # An update creates a cumulative, isolated dataset; a fresh run
+            # contains only the accessions selected by this invocation.
+            accessions.update(p.stem for p in Path(STORE_DIR, "genomes").glob("*.fna"))
 
         for acc in accessions:
             matches = glob(f"{STORE_DIR}/genomes/{acc}*.fna")
@@ -487,20 +508,20 @@ rule skder:
         min_af = config['deduplication']['min_af']
     conda:
         f"{config['run'].get('env_dir')}/skder.yaml"
-    shell:
-        """
-        skder -g {input.genomes_dir} \
-              -o {output.derep_dir}  \
-              -i {params.ani}        \
-              -f {params.min_af}     \
-              -c {threads}
-
-        ls {output.derep_dir}/Dereplicated_Representative_Genomes/ \
-            | sed 's/\\.fna$//' \
-            > {output.derep_list}
-
-        touch {output.flag}
-        """
+    run:
+        representatives = Path(output.derep_dir, "Dereplicated_Representative_Genomes")
+        representatives.mkdir(parents=True, exist_ok=True)
+        if DEDUPE_ENABLED:
+            shell("skder -g {input.genomes_dir} -o {output.derep_dir} -i {params.ani} -f {params.min_af} -c {threads}")
+        else:
+            # Preserve the downstream interface without running skder: every
+            # CheckM2-passing genome is a representative.
+            for genome in Path(input.genomes_dir).glob("*.fna"):
+                target = representatives / genome.name
+                if not target.exists():
+                    target.symlink_to(genome.resolve())
+        Path(output.derep_list).write_text("\n".join(sorted(p.stem for p in representatives.glob("*.fna"))) + "\n")
+        Path(output.flag).touch()
 
 
 rule gtdbtk:
@@ -508,14 +529,14 @@ rule gtdbtk:
     input:
         genomes_dir = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}",
         derep_list  = lambda wc: f"{stage_dir(wc.org, STAGES[-1])}/derep_genomes.txt",
-        db_dir      = ancient(config["gtdb"]["db_path"])
+        db_dir      = ancient(GTDB["db_path"] if RUN_GTDBTK else GTDB_METADATA)
     output:
         outdir = directory(f"{RUN_DIR}/gtdbtk/{{org}}"),
         flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
     threads:
         config["gtdb"].get("threads", 16)
     params:
-        db           = config["gtdb"]["db_path"],
+        db           = GTDB.get("db_path", ""),
         extension    = config["gtdb"].get("extension",    "fna"),
         prefix       = config["gtdb"].get("prefix",       "gtdbtk"),
         min_perc_aa  = config["gtdb"].get("min_perc_aa",  10),
@@ -524,25 +545,25 @@ rule gtdbtk:
         scratch_dir  = config["gtdb"].get("scratch_dir",  "/tmp"),
         extra_args   = config["gtdb"].get("extra_args",   "")
     conda:
-        f"{config['run'].get('env_dir')}/gtdbtk.yaml"
-    shell:
-        """
-        export GTDBTK_DATA_PATH={params.db}
-
-        gtdbtk classify_wf \
-            --genome_dir   {input.genomes_dir}/Dereplicated_Representative_Genomes      \
-            --out_dir      {output.outdir}           \
-            --extension    {params.extension}        \
-            --prefix       {params.prefix}           \
-            --min_perc_aa  {params.min_perc_aa}      \
-            --min_af       {params.min_af}           \
-            --cpus         {threads}                 \
-            --pplacer_cpus {params.pplacer_cpus}     \
-            --scratch_dir  {params.scratch_dir}      \
-            {params.extra_args}
-
-        touch {output.flag}
-        """
+        f"{config['run'].get('env_dir')}/gtdbtk.yaml" if RUN_GTDBTK else f"{config['run'].get('env_dir')}/Reg.yaml"
+    run:
+        os.makedirs(output.outdir, exist_ok=True)
+        if RUN_GTDBTK:
+            shell("export GTDBTK_DATA_PATH={params.db}; gtdbtk classify_wf --genome_dir {input.genomes_dir}/Dereplicated_Representative_Genomes --out_dir {output.outdir} --extension {params.extension} --prefix {params.prefix} --min_perc_aa {params.min_perc_aa} --min_af {params.min_af} --cpus {threads} --pplacer_cpus {params.pplacer_cpus} --scratch_dir {params.scratch_dir} {params.extra_args}")
+        else:
+            metadata = pd.read_csv(GTDB_METADATA, sep="\t", dtype=str)
+            genome_column = next((c for c in ("accession", "genome", "user_genome") if c in metadata.columns), None)
+            classification_column = next((c for c in ("gtdb_taxonomy", "classification") if c in metadata.columns), None)
+            if not genome_column or not classification_column:
+                raise ValueError("GTDB metadata must contain accession/genome and gtdb_taxonomy/classification columns")
+            selected = {p.stem for p in Path(input.genomes_dir, "Dereplicated_Representative_Genomes").glob("*.fna")}
+            metadata[genome_column] = metadata[genome_column].str.replace(r"^(RS_|GB_)", "", regex=True)
+            result = metadata[metadata[genome_column].isin(selected)][[genome_column, classification_column]].rename(columns={genome_column: "user_genome", classification_column: "classification"})
+            missing = selected - set(result["user_genome"])
+            if missing:
+                raise ValueError(f"GTDB metadata has no taxonomy for: {', '.join(sorted(missing))}")
+            result.to_csv(f"{output.outdir}/{params.prefix}.ar53.summary.tsv", sep="\t", index=False)
+        Path(output.flag).touch()
 
 
 
@@ -631,7 +652,7 @@ rule update_master_checkm2:
 
         os.makedirs(MASTER_DIR, exist_ok=True)
 
-        if os.path.exists(output.master):
+        if UPDATE_MODE and os.path.exists(output.master):
             old_df = pd.read_csv(output.master, sep="\t")
             combined = pd.concat([old_df, new_df], ignore_index=True)
         else:
@@ -664,7 +685,7 @@ rule update_master_gtdbtk:
 
         os.makedirs(MASTER_DIR, exist_ok=True)
 
-        if os.path.exists(output.master):
+        if UPDATE_MODE and os.path.exists(output.master):
             old_df = pd.read_csv(output.master)
             combined = pd.concat([old_df, new_df], ignore_index=True)
         else:
