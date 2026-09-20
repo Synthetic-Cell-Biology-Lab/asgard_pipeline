@@ -3,7 +3,7 @@ run:
   reason: "test run 4"
   cores: 12
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
-  id: asgard_collation_v3
+  id: asgard_collation_v4
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   base_dir: "/home/anirudh/asgard_pipeline"
   output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
@@ -27,7 +27,7 @@ cds:
   bakta_db: "/home/anirudh/asgard_pipeline/database/software_dbs/bakta/db"
   existing: "/home/anirudh/asgard_pipeline/database/cds_genomes"
 organisms:
-  - name: "promethearchaeati"
+  - name: "Asgardarchaeota"
     assembly_level: 
     refseq_only: false
 deduplication:
@@ -61,7 +61,7 @@ gtdb:
 download:
   # Choose `gtt` for GTDB-verified accessions, or `ncbi` for NCBI taxon search.
   source: gtt
-  gtt_command: gtt-get-accessions
+  gtt_command: gtt-get-accessions-from-GTDB
   gtt_taxon: asgardarchaeota
 interproscan:
   phylum_filter: Asgardarchaeota

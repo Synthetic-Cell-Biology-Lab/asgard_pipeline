@@ -3,6 +3,7 @@ channels:
   - conda-forge
   - bioconda
   - defaults
+  - astrobiomike
 dependencies:
   - pandas=2.3.3
   - mmseqs2
@@ -13,7 +14,7 @@ dependencies:
   - datasets 
   - ncbi-datasets-cli >= 18.22
   # Provides gtt-get-accessions for GTDB-verified accession selection.
-  - gtt
+  - gtotree
   - curl
   - gzip
   - mamba

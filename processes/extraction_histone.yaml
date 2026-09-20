@@ -1,0 +1,94 @@
+run:
+  id: histone_run_1
+  protein_name: histone_1
+  pipeline: extraction_pipeline
+  base_dir: "/home/anirudh/asgard_pipeline"
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  reason: extracting tubulin homologs in asgardarchaeaota; updated Aug 2026
+  cores: 24
+  taxon_level: phylum
+  taxon_filter: Asgardarchaeota
+  LOCUS_TAG: locus_tag
+SSN:
+  RUN_SSN: True
+  copy_to_windows: true
+  windows_path: "/mnt/e/ssn_outputs"
+  SSN_BITSCORES:
+  - 50
+  - 80
+  - 100
+  - 120
+  - 150
+  - 170
+  - 200
+  identity: 0.95
+  ssn_cores: 16
+  mem_mb: 16000
+  runtime_min: 120
+  evlaue: 1e-5
+  coverage: 0.6
+
+inputs:
+  database: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/ips/v2_cp85_con10_ips_promethearchaeati_summary.parquet"
+  raw_database: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/ips/v2_cp85_con10_ips_promethearchaeati.parquet"
+  genome_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/genome_file/v2_cp85_con10_gf_promethearchaeati.csv"
+  protein_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/protein_file/v2_cp85_con10_pf_promethearchaeati.csv"
+  fasta_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/fasta/v2_cp85_con10_promethearchaeati.faa"
+  arcog:
+    def_tab: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/arCOGdef.tab"
+    fasta: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/ar18.fa"
+    csv: "/home/anirudh/asgard_pipeline/database/COG/ArCOGs/ar18.ar14.02.csv"
+
+modes:
+  parse_ips:
+    enabled: true
+    remove_hypotheticals: false
+    search:
+      search_string: h2a
+
+      rstring: 
+  hmmsearch:
+    enabled: false
+    acc_groups:
+    - PF00125 #core 
+    - PF00538 # linker
+  from_manual:
+    enabled: false        
+    manual_annotation_filter:
+    - ftsz
+  from_fasta_csv: 
+    enabled: false
+  arcog:
+    enabled: false
+    search_terms:
+    - PRC-barrel
+    ids:
+    - "2155"
+    - "2157"
+    - "2158"
+    - "5740"
+    - "8023"
+
+
+plot:
+  y_column: protein_length
+  filter_column: Manual_annotation
+  filter_values:
+  - histone
+  taxon_levels:
+  - phylum
+  - class
+  - order
+  
+  proteins_presence:
+  - histone
+
+
+  ymin: 80
+  ymax: 300
+phylogeny:
+  threads: 12
+  run_itol_upload: true
+  itol_project: Asgard
+  madroot: false

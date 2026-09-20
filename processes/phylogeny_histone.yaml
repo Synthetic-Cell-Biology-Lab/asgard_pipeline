@@ -1,0 +1,134 @@
+run:
+  id: histone_run_2
+  phyl_id: histone
+  protein_name: histone
+  pipeline: phylogeny_pipeline
+  base_dir: "/home/anirudh/asgard_pipeline"
+  env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
+  log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
+  reason: To perform phylogeny of histomes and segregate
+  cores: 24
+  taxon_level: phylum
+  taxon_filter: Asgardarchaeota
+  LOCUS_TAG: locus_tag
+
+SSN:
+  RUN_SSN: false
+  copy_to_windows: True
+  windows_path: "/mnt/e/ssn_outputs"
+  SSN_BITSCORES:
+  - 50
+  - 80
+  - 100
+  - 120
+  - 150
+  - 170
+  - 200
+  identity: 0.95
+  ssn_cores: 16
+  mem_mb: 16000
+  runtime_min: 120
+  evlaue: 1e-5
+  coverage: 0.6
+
+inputs:
+  database: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/ips/v2_cp85_con10_ips_promethearchaeati_summary.parquet"
+  raw_database: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/ips/v2_cp85_con10_ips_promethearchaeati.parquet"
+  genome_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/genome_file/v2_cp85_con10_gf_promethearchaeati.csv"
+  protein_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/protein_file/v2_cp85_con10_pf_promethearchaeati.csv"
+  fasta_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/fasta/v2_cp85_con10.fasta"
+modes:
+  parse_ips:
+    enabled: True
+    remove_hypotheticals: false
+    search:
+      search_string: histone
+      rstring: 
+  hmmsearch:
+    enabled: false
+    acc_groups:
+    - IPR027275 # PRC-barrel domain
+    - PF05239 # PRC-barrel domain
+    - PF24986 # RimM
+    - PF20259 # tRNA methyl transferase
+    - IPR011033 # like superfamily
+  from_manual:
+    enabled: false        
+    manual_annotation_filter:
+    - cdpb
+  from_fasta_csv: 
+    enabled: false
+
+
+plot:
+  y_column: protein_length
+  filter_column: Manual_annotation
+  filter_values:
+  - cdpb
+  taxon_levels:
+  - phylum
+  - class
+  - order
+  
+  proteins_presence:
+  - cdpb
+
+
+  ymin: 0
+  ymax: 1500
+phylogeny:
+  threads: 12
+  run_itol_upload: false
+  itol_project: Asgard
+  madroot: false    
+  alignment:
+    method: mafft
+    famsa:
+      threads: 8
+      extra_args: ''
+    mafft:
+      mode: --auto
+      threads: 8
+      extra_args: '--maxiterate 1000'
+    muscle:
+      mode: -align
+      threads: 8
+      extra_args: ' '
+
+  trimming:
+    method: clipkit
+    trimal:
+      mode: -automated1
+      extra_args: ''
+    bmge:
+      matrix: BLOSUM62
+      gap_rate: 0.5
+      entropy: 0.5
+      extra_args: ''
+    clipkit:
+      mode: smart-gap
+      extra_args: ''
+  tree:
+    method: fasttree   #fasttree / iqtree 
+    iqtree:
+      model: MFP
+      seqtype: AA
+      bootstrap: 1000 # >95% good enough
+      bootstrap_method: -B
+      alrt: 1000 # if >85% good enough
+      outgroup: null
+      seed: 12345
+      ninit: 100
+      ntop: 20
+      nbest: 5
+      nstop: 200
+      niter: null
+      max_iter: 1000
+      epsilon: 0.01
+      threads: 8
+      extra_args: ''
+
+    fasttree:
+      model: lg            # lg, wag, jtt
+      threads: 8
+      extra_args: ""
