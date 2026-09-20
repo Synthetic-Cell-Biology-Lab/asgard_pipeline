@@ -4,11 +4,13 @@
 
 ## Configuration
 
-Set `download.source` to `gtt` to obtain GTDB-verified accessions with
-`gtt-get-accessions -t <download.gtt_taxon>` (the default taxon is
-`asgardarchaeota`), or to `ncbi` to retain the NCBI taxon-search workflow.
-Downloads are still retrieved with NCBI Datasets after the accession list is
-selected, so both sources produce the same normalized FASTA layout.
+Set `download.source` to `gtotree` to obtain GTDB-verified accessions and
+metadata with `gtt-get-accessions-from-GTDB -t <download.gtt_taxon>` (the
+default taxon is `asgardarchaeota`), or to `ncbi` to retain the NCBI
+taxon-search workflow. `gtt` remains accepted as a backwards-compatible alias
+for `gtotree`. Downloads are still retrieved with NCBI Datasets after the
+accession list is selected, so both sources produce the same normalized FASTA
+layout.
 
 `run.update: false` makes a fresh isolated set: prior store and annotation
 contents are ignored. Set it to `true` to include previously selected genomes
@@ -24,20 +26,26 @@ Bakta and InterProScan, by organism and genome. This keeps diagnostics from a
 given run separate from previous runs while preserving the output produced by
 each external tool.
 
-CheckM2 always remains in the workflow. Use `deduplication.enabled: false`
-(the default) to skip skder and pass every CheckM2-passing genome onward.
-Set it to `true` to enable ANI dereplication.
+With `download.source: gtotree`, the workflow does not invoke CheckM2 or
+GTDB-Tk. It reuses the retrieved `checkm2_*` and GTDB taxonomy fields, writes
+a normalized CheckM2-compatible quality report, and writes the selected
+metadata to `<run>/gtdbtk/<org>/gtdbtk.ar53.summary.tsv`. The latter is the
+same phylogeny metadata handoff expected from GTDB-Tk, so downstream placement
+and annotation steps use the retrieved metadata directly. GToTree metadata
+must include an accession column, `checkm2_completeness`,
+`checkm2_contamination`, and `gtdb_taxonomy` (or `classification`).
 
-To use GTDB's verified taxonomy instead of recomputing it, set
+For non-GToTree runs, use `deduplication.enabled: false` (the default) to
+skip skder and pass every CheckM2-passing genome onward. Set it to `true` to
+enable ANI dereplication.
+
+To use a cached GTDB metadata release with a non-GToTree source, set
 `gtdb.run_gtdbtk: false`, set `gtdb.metadata_url` to the archaeal GTDB
 metadata release URL, and choose the local cache path with
 `gtdb.metadata_file`. The pipeline downloads and decompresses the metadata
-when the cache is absent. The metadata must be tab-separated and contain an
-accession-like column (`accession`, `genome`, or `user_genome`) plus
-`gtdb_taxonomy` or `classification`. Set
-`gtdb.run_gtdbtk: true` to run GTDB-Tk instead. `run_gtdbtk` defaults to
-`true` for compatibility with existing configurations that specify only
-`gtdb.db_path`.
+when the cache is absent. Set `gtdb.run_gtdbtk: true` to run GTDB-Tk instead.
+`run_gtdbtk` defaults to `true` for compatibility with existing configurations
+that specify only `gtdb.db_path`.
 
 ## Main rules and sub-rules
 

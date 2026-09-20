@@ -59,9 +59,9 @@ gtdb:
   scratch_dir:  /tmp
   extra_args:   ""
 download:
-  # Choose `gtt` for GTDB-verified accessions, or `ncbi` for NCBI taxon search.
-  source: gtt
-  gtt_command: gtt-get-accessions-from-GTDB
+  # Choose `gtotree` for GToTree GTDB metadata/accessions, or `ncbi` for NCBI taxon search.
+  source: gtotree
+  gtotree_command: gtt-get-accessions-from-GTDB
   gtt_taxon: Asgardarchaeota
 interproscan:
   phylum_filter: Asgardarchaeota
