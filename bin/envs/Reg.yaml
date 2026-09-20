@@ -12,6 +12,10 @@ dependencies:
   - hmmer
   - datasets 
   - ncbi-datasets-cli >= 18.22
+  # Provides gtt-get-accessions for GTDB-verified accession selection.
+  - gtt
+  - curl
+  - gzip
   - mamba
   - seaborn
   - yaml
