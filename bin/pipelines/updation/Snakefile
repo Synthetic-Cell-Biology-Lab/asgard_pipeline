@@ -158,13 +158,10 @@ else:
 # Rules
 # =========================
 
-rule all:
-    input:
+
+FINAL = [
         expand(f"{RUN_DIR}/{{org}}/done.flag",                      org=ORGS),
-        expand(f"{RUN_DIR}/skder/{{org}}/dedup_done.flag",          org=ORGS),
-        expand(f"{RUN_DIR}/checkm2/{{org}}/checkm2_done.flag",      org=ORGS),
-        expand(f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",        org=ORGS),
-        expand(f"{RUN_DIR}/gtdbtk/{{org}}_taxa_count.svg",          org=ORGS),
+
         expand(f"{RUN_DIR}/interproscan/{{org}}/ips_done.flag",     org=ORGS),
         expand(f"{config['inputs']['out_fasta']}_{{org}}.faa" ,org = ORGS),
         expand(f"{config['inputs']['out_genome_csv']}_{{org}}.csv", org = ORGS),
@@ -175,6 +172,29 @@ rule all:
         expand(f"{STORE_DIR}/genomes/{{accession}}.fna", accession=ALL_MANUAL_ACCESSIONS),
         expand(f"{config['inputs']['out_ips_parquet']}_{{org}}.parquet", org = ORGS),
         expand(f"{config['inputs']['out_ips_parquet']}_{{org}}_summary.parquet", org = ORGS)
+]
+
+
+
+if GTOTREE_MODE:
+    FINAL.extend([
+        expand(f"{RUN_DIR}/{{org}}/{{org}}_taxa_count.svg",          org=ORGS),
+    ])
+else:
+    FINAL.extend(
+        [
+        expand(f"{RUN_DIR}/skder/{{org}}/dedup_done.flag",          org=ORGS),
+        expand(f"{RUN_DIR}/checkm2/{{org}}/checkm2_done.flag",      org=ORGS),
+        expand(f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",        org=ORGS),
+        expand(f"{RUN_DIR}/gtdbtk/{{org}}_taxa_count.svg",          org=ORGS),
+        ]
+    )
+
+
+rule all:
+    input:
+        FINAL
+
 
 
 
@@ -997,7 +1017,7 @@ checkpoint split_taxonomy:
         df.to_csv(output[0], index=False)
 
 
-rule taxa_counts:
+rule taxa_counts_gtdbtk:
     # plot taxacounts at class level
     input:
         csv = f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"

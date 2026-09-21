@@ -1,9 +1,9 @@
 run:
   pipeline: updation
-  reason: "test run 4"
+  reason: "test run 5"
   cores: 12
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
-  id: asgard_collation_v4
+  id: asgard_collation_v5
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   base_dir: "/home/anirudh/asgard_pipeline"
   output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
