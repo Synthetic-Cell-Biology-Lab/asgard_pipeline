@@ -3,7 +3,7 @@ run:
   reason: "test run 5"
   cores: 12
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
-  id: asgard_collation_v5
+  id: asgard_collation_v6
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   base_dir: "/home/anirudh/asgard_pipeline"
   output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
@@ -17,11 +17,11 @@ inputs:
   out_genome_csv: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/genome_file/v2_cp85_con10_gf"
   out_protein_csv: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/protein_file/v2_cp85_con10_pf"
   out_ips_parquet: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/ips/v2_cp85_con10_ips"
-  manual_genomes:
-    hc1:
-      - accession: GCA_055385335.1
-    sc1:
-      - accession: GCA_055394625.1
+  # manual_genomes:
+  #   hc1:
+  #     - accession: GCA_055385335.1
+  #   sc1:
+  #     - accession: GCA_055394625.1
 
 cds:
   bakta_db: "/home/anirudh/asgard_pipeline/database/software_dbs/bakta/db"
@@ -32,12 +32,12 @@ organisms:
     refseq_only: false
 deduplication:
   # false keeps every CheckM2-passing genome and does not invoke skder.
-  enabled: false
+  enabled: true
   ani: 99.0
   min_af: 0.3
 checkm2:
   db_path: /home/anirudh/asgard_pipeline/database/software_dbs/checkm2/CheckM2_database/uniref100.KO.1.dmnd
-  Contamination: 15
+  Contamination: 10
   Completeness: 85
 pipeline_stages:
   - raw
@@ -63,6 +63,7 @@ download:
   source: gtotree
   gtotree_command: gtt-get-accessions-from-GTDB
   gtt_taxon: Asgardarchaeota
+  accession_column: ncbi_genbank_assembly_accession # or genome_file if downloaded from ncbi
 interproscan:
   phylum_filter: Asgardarchaeota
   ips_path: /home/anirudh/interproscan/

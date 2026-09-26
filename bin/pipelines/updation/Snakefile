@@ -71,7 +71,7 @@ GENOME_SOURCE = DOWNLOAD.get("source", "ncbi").lower()
 # recomputing it with CheckM2 or GTDB-Tk.
 GTOTREE_MODE = GENOME_SOURCE in {"gtt", "gtotree"}
 UPDATE_MODE = config["run"].get("update", True)
-DEDUPE_ENABLED = config.get("deduplication", {}).get("enabled", False) and not GTOTREE_MODE
+DEDUPE_ENABLED = config.get("deduplication", {}).get("enabled", False) 
 GTDB = config.get("gtdb", {})
 # Preserve the historical behaviour for configurations that only provide the
 # GTDB-Tk database path.  Metadata mode is an explicit opt-in.
@@ -117,7 +117,7 @@ def stage_dir(org, stage):
     stage_map = {
         "raw":      f"{RUN_DIR}/{org}/genomes",
         "filtered": f"{RUN_DIR}/{org}/filtered",
-        "derep":    f"{RUN_DIR}/skder/{org}",
+        "derep":    f"{RUN_DIR}/skder/{org}",   
     }
     return stage_map[stage]
 
@@ -215,55 +215,31 @@ rule check_database:
 
         """
 
+if GTOTREE_MODE:
+    rule get_summary_gtt:
+        output:
+            summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+            accessions=f"{RUN_DIR}/{{org}}/genomes_accessions.txt"
+        conda:
+            f"{config['run'].get('env_dir')}/Reg.yaml"
+        log:
+            f"{LOG_DIR}/get_summary/{{org}}.log"
+        params:
+            gtt_taxon=lambda wc: get_org_param(
+                wc, "gtt_taxon", DOWNLOAD.get("gtt_taxon", "asgardarchaeota")
+            ),
+            gtt_command=DOWNLOAD.get(
+                "gtotree_command",
+                DOWNLOAD.get("gtt_command", "gtt-get-accessions-from-GTDB")
+            )
+        run:
+            import glob
+            import os
+            import shutil
+
+            os.makedirs(os.path.dirname(output.summary), exist_ok=True)
+
         
-rule get_summary:
-    """
-    Get genome summaries.
-
-    For GENOME_SOURCE == "gtt", gtt-get-accessions-from-GTDB generates:
-      1. an accession list
-      2. a GTDB metadata table
-
-    The accession list is passed downstream for genome downloading.
-    The GTDB metadata is used directly as genomes_summary.tsv.
-    """
-
-    output:
-        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
-        accessions=f"{RUN_DIR}/{{org}}/genomes_accessions.txt"
-
-    conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
-    log:
-        f"{LOG_DIR}/get_summary/{{org}}.log"
-
-    params:
-        name=lambda wc: get_org_param(wc, "name"),
-        level=lambda wc: " ".join(
-            f"--assembly-level {l}"
-            for l in (get_org_param(wc, "assembly_level") or [])
-        ),
-        refseq=lambda wc: "--reference"
-            if get_org_param(wc, "refseq_only")
-            else "",
-        gtt_taxon=lambda wc: get_org_param(
-            wc,
-            "gtt_taxon",
-            DOWNLOAD.get("gtt_taxon", "asgardarchaeota")
-        ),
-        gtt_command=DOWNLOAD.get(
-            "gtotree_command",
-            DOWNLOAD.get("gtt_command", "gtt-get-accessions-from-GTDB")
-        )
-
-    run:
-        import glob
-        import os
-        import shutil
-
-        os.makedirs(os.path.dirname(output.summary), exist_ok=True)
-
-        if GTOTREE_MODE:
 
             # ---------------------------------------------------------
             # Dedicated temporary directory for this organism
@@ -328,7 +304,6 @@ rule get_summary:
                 dtype=str
             )
 
-
             # Remove GB_ or RS_ prefix and rename column to Assembly Accession
             metadata["Assembly Accession"] = (
                 metadata["accession"]
@@ -349,22 +324,33 @@ rule get_summary:
             # ---------------------------------------------------------
             shutil.rmtree(tmp_dir)
 
-        else:
-            shell(
-                r'''mkdir -p $(dirname {log})
-                TAXID=$(datasets summary taxonomy taxon "{params.name}" \
-                    --as-json-lines |
-                    dataformat tsv taxonomy \
-                    --template tax-summary |
-                    awk 'NR==2 {{print $2}}')
+else:
+    rule get_summary_datasets:
+        output:
+            summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+            accessions=f"{RUN_DIR}/{{org}}/genomes_accessions.txt"
+        conda:
+            f"{config['run'].get('env_dir')}/Reg.yaml"
+        log:
+            f"{LOG_DIR}/get_summary/{{org}}.log"
+        params:
+            name=lambda wc: get_org_param(wc, "name"),
+            level=lambda wc: " ".join(
+                f"--assembly-level {l}" for l in (get_org_param(wc, "assembly_level") or [])
+            ),
+            refseq=lambda wc: "--reference" if get_org_param(wc, "refseq_only") else ""
+        shell:
+            r'''mkdir -p $(dirname {log})
+            TAXID=$(datasets summary taxonomy taxon "{params.name}" \
+                --as-json-lines |
+                dataformat tsv taxonomy --template tax-summary |
+                awk 'NR==2 {{print $2}}')
 
-                datasets summary genome taxon "$TAXID" \
-                    {params.level} \
-                    {params.refseq} \
-                    --as-json-lines |
-                    dataformat tsv genome \
-                    > {output.summary} 2> {log}'''
-            )
+            datasets summary genome taxon "$TAXID" \
+                {params.level} {params.refseq} \
+                --as-json-lines |
+                dataformat tsv genome \
+                > {output.summary} 2> {log}'''
 
 
 
@@ -768,6 +754,57 @@ rule add_manual_genome:
         """
 
 
+rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see note)
+    input: 
+        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv"
+    output:
+        quality_report = f"{RUN_DIR}/checkm2/{{org}}/quality_report_from_metadata.tsv"
+    threads: 16
+    conda:
+        f"{config['run'].get('env_dir')}/Reg.yaml"
+    log:
+        f"{LOG_DIR}/metadata_quality_report/{{org}}.log"
+    run:
+        import pandas as pd
+        Path(output.quality_report).parent.mkdir(parents=True, exist_ok=True)
+        Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
+        
+        metadata = pd.read_csv(input.summary, sep="\t", dtype=str)
+        print(metadata.columns.tolist())
+        accession_column = next((c for c in ("Assembly Accession", "accession", "genome", "user_genome") if c in metadata.columns), None)
+        if not accession_column or not {"checkm2_completeness", "checkm2_contamination"}.issubset(metadata.columns):
+            raise ValueError("GToTree metadata must contain accession, checkm2_completeness, and checkm2_contamination columns")
+        metadata["Name"] = metadata[accession_column].map(normalize_accession)
+        metadata["Assembly_Name"] = (
+            metadata["Name"] + "_" + metadata.get("ncbi_assembly_name", "").fillna("") + "_genomic"
+        )
+        report = pd.DataFrame({
+            "Assembly_Name": metadata["Assembly_Name"],
+            "Completeness": pd.to_numeric(metadata["checkm2_completeness"], errors="coerce"),
+            "Contamination": pd.to_numeric(metadata["checkm2_contamination"], errors="coerce"),
+            "Completeness_Model_Used": metadata.get("checkm2_model","metadata"),
+            "Translation_Table_Used": metadata.get("ncbi_translation_table", ""),
+            "Coding_Density": pd.to_numeric(metadata.get("coding_density", ""), errors="coerce"),
+            "Contig_N50": pd.to_numeric(metadata.get("n50_contigs", ""), errors="coerce"),
+            "Average_Gene_Length": pd.NA,
+            "Genome_Size": pd.to_numeric(metadata.get("genome_size", ""), errors="coerce"),
+            "GC_Content": pd.to_numeric(metadata.get("gc_percentage", ""), errors="coerce"),
+            "Total_Coding_Sequences": pd.to_numeric(metadata.get("protein_count", ""), errors="coerce"),
+            "Total_Contigs": pd.to_numeric(metadata.get("contig_count", ""), errors="coerce"),
+            "Name": metadata["Name"],
+            "Max_Contig_Length": pd.to_numeric(metadata.get("longest_contig", ""), errors="coerce"),
+        })
+        requested = {normalize_accession(p) for p in Path(stage_dir(wildcards.org, "raw")).glob("*.fna")}
+        print(requested)
+        print(report['Assembly_Name'])
+        report = report[report["Assembly_Name"].isin(requested)]
+        missing = requested - set(report["Assembly_Name"])
+        if missing:
+            raise ValueError(f"GToTree metadata has no quality data for: {', '.join(sorted(missing))}")
+        report.to_csv(output.quality_report, sep="\t", index=False)
+        Path(log[0]).write_text(f"Reused CheckM2 estimates for {len(report)} genomes from GToTree metadata.\n")
+
+
 rule checkm2:
     """
     Given that we are working with MAGs, we need to perform quality control to 
@@ -826,74 +863,179 @@ rule checkm2:
         Path(output.checkm2_flag).touch()
 
 
+def quality_report_for_org(org):
+    """
+    Path to this organism's quality data in checkm2's schema
+    (Name/Completeness/Contamination/...), regardless of source.
+
+      ncbi mode -> rule checkm2's own quality_report.tsv (a real CheckM2 run)
+      gtt mode  -> rule metadata_quality_report's reshape of
+                   genomes_summary.tsv (GTDB's published CheckM2 estimates)
+
+    Filenames are deliberately different - metadata_quality_report never ran
+    CheckM2, and the name says so. This function is the one place that
+    resolves which file backs "the report" for a given org, so link_filtered,
+    update_master_checkm2 and rule all don't each re-derive the mode check.
+    """
+    if GTOTREE_MODE:
+        return f"{RUN_DIR}/checkm2/{org}/quality_report_from_metadata.tsv"
+    return f"{RUN_DIR}/checkm2/{org}/quality_report.tsv"
+
+
 rule link_filtered:
-    # create symlink for files that pass checkm2 parameter thresholds
+    """
+    Create symlinks for genomes that pass CheckM2 quality thresholds.
+
+    Steps:
+      1. Read the quality report.
+      2. Filter genomes by completeness and contamination.
+      3. Write the passing accessions to passed_genomes.txt.
+      4. Create symlinks to the corresponding genome FASTA files.
+      5. Report summary statistics and any missing genome files.
+    """
+
     input:
-        quality_report = f"{RUN_DIR}/checkm2/{{org}}/quality_report.tsv",
-        genomes_dir    = lambda wc: stage_dir(wc.org, "raw")   # FIX: was prev_stage_dir(wc.org, "filtered")
+        quality_report = lambda wc: quality_report_for_org(wc.org),
+        genomes_dir    = lambda wc: stage_dir(wc.org, "raw")
+
     output:
         filtered_dir  = directory(f"{RUN_DIR}/{{org}}/filtered"),
         filtered_list = f"{RUN_DIR}/{{org}}/filtered/passed_genomes.txt"
+
     threads: 1
+
     params:
         cont         = config["checkm2"]["Contamination"],
         completeness = config["checkm2"]["Completeness"]
+
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
+
+    log:
+        f"{LOG_DIR}/link_filtered/{{org}}.log"
+
     shell:
+        r"""
+        set -euo pipefail
+
+        exec > "{log}" 2>&1
+
+        echo "===================================="
+        echo "[INFO] Rule: link_filtered"
+        echo "[INFO] Organism: {wildcards.org}"
+        echo "[INFO] Quality report: {input.quality_report}"
+        echo "[INFO] Genome directory: {input.genomes_dir}"
+        echo "[INFO] Completeness threshold: {params.completeness}"
+        echo "[INFO] Contamination threshold: {params.cont}"
+        echo "===================================="
+
+        echo "[INFO] Creating filtered directory..."
+        mkdir -pv "{output.filtered_dir}"
+
+        echo "[INFO] Filtering genomes..."
+
+        # Count total genomes in the quality report (excluding header)
+        total_genomes=$(awk 'NR > 1 && NF > 0 {{count++}} END {{print count+0}}' \
+            "{input.quality_report}")
+
+        # Filter genomes based on quality thresholds
+        awk -v completeness="{params.completeness}" \
+            -v cont="{params.cont}" \
+            'NR > 1 && $2 >= completeness && $3 <= cont {{
+                print $1
+            }}' \
+            "{input.quality_report}" \
+            > "{output.filtered_list}"
+
+        # Count qualified and filtered genomes
+        qualified_genomes=$(wc -l < "{output.filtered_list}")
+        filtered_genomes=$((total_genomes - qualified_genomes))
+
+        echo "===================================="
+        echo "[INFO] Total genomes evaluated: $total_genomes"
+        echo "[INFO] Qualified genomes: $qualified_genomes"
+        echo "[INFO] Filtered out genomes: $filtered_genomes"
+        echo "===================================="
+
+        echo "[INFO] Passing genomes:"
+        cat "{output.filtered_list}"
+
+        echo "[INFO] Creating symlinks..."
+
+        while IFS= read -r genome; do
+            [[ -z "$genome" ]] && continue
+
+            echo "[INFO] Linking: $genome"
+
+            ln -sv \
+                "{input.genomes_dir}/${{genome}}.fna" \
+                "{output.filtered_dir}/"
+
+        done < "{output.filtered_list}"
+
+        echo "[INFO] Finished linking genomes."
         """
-        mkdir -p {output.filtered_dir}
-
-        awk -F' ' \
-            -v completeness={params.completeness} \
-            -v cont={params.cont} \
-            'NR > 1 && $2 >= completeness && $3 <= cont {{ print $1 }}' \
-            {input.quality_report} \
-        > {output.filtered_list}
-
-        while read genome; do
-            ln -s {input.genomes_dir}/${{genome}}.fna {output.filtered_dir}/
-        done < {output.filtered_list}
-        """
-
 
 rule skder:
-    # Deduplication of genomes to avoid over-representation of any genome
+    """Deduplication of genomes to avoid over-representation of any genome."""
     input:
         genomes_dir = lambda wc: prev_stage_dir(wc.org, "derep"),
         stage_list  = lambda wc: f"{prev_stage_dir(wc.org, 'derep')}/passed_genomes.txt"
     output:
-        derep_dir  = directory(f"{RUN_DIR}/skder/{{org}}"),
         derep_list = f"{RUN_DIR}/skder/{{org}}/derep_genomes.txt",
-        flag       = f"{RUN_DIR}/skder/{{org}}/dedup_done.flag",
+        flag       = f"{RUN_DIR}/skder/{{org}}/dedup_done.flag"
     threads: 16
     params:
-        ani    = config['deduplication']['ani'],
-        min_af = config['deduplication']['min_af']
+        derep_dir = f"{RUN_DIR}/skder/{{org}}",
+        ani       = config['deduplication']['ani'],
+        min_af    = config['deduplication']['min_af']
     conda:
-        f"{config['run'].get('env_dir')}/skder.yaml" if DEDUPE_ENABLED else f"{config['run'].get('env_dir')}/Reg.yaml"
+        f"{config['run'].get('env_dir')}/skder.yaml" if DEDUPE_ENABLED
+        else f"{config['run'].get('env_dir')}/Reg.yaml"
     log:
-        f"{LOG_DIR}/skder/{{org}}.log"
+        f"{LOG_DIR}/skder/{{org}}_skder.log"
     run:
-        representatives = Path(output.derep_dir, "Dereplicated_Representative_Genomes")
-        representatives.mkdir(parents=True, exist_ok=True)
+        import shutil
+        print(input.genomes_dir)
+        derep_dir = Path(params.derep_dir)
+        representatives = derep_dir / "Dereplicated_Representative_Genomes"
+
+        # skder itself refuses to run if params.derep_dir already exists, and
+        # since derep_dir isn't a Snakemake `output:`, nothing clears it
+        # between runs on its own - a rerun always finds the prior run's
+        # directory sitting there and errors out. Clear it ourselves first.
+        if derep_dir.exists():
+            shutil.rmtree(derep_dir)
+
+        Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
+
         if DEDUPE_ENABLED:
-            shell("mkdir -p $(dirname {log}) && skder -g {input.genomes_dir} -o {output.derep_dir} -i {params.ani} -f {params.min_af} -c {threads} > {log} 2>&1")
+            shell(
+                "skder -g {input.genomes_dir} "
+                "-o {params.derep_dir} "
+                "-i {params.ani} "
+                "-f {params.min_af} "
+                "-c {threads} "
+                "> {log} 2>&1"
+            )
         else:
             # Preserve the downstream interface without running skder: every
-            # quality-passing genome is a representative. GToTree mode always
-            # takes this path because its metadata is already curated.
+            # quality-passing genome becomes a representative.
+            representatives.mkdir(parents=True, exist_ok=True)
             for genome in Path(input.genomes_dir).glob("*.fna"):
                 target = representatives / genome.name
                 if not target.exists():
                     target.symlink_to(genome.resolve())
-            Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
-            Path(log[0]).write_text("Deduplication disabled; linked all CheckM2-passing genomes.\n")
+            Path(log[0]).write_text(
+                "Deduplication disabled; linked all CheckM2-passing genomes.\n"
+            )
+
         Path(output.derep_list).write_text(
-            "\n".join(sorted(normalize_accession(p) for p in representatives.glob("*.fna"))) + "\n"
+            "\n".join(sorted(
+                normalize_accession(p) for p in representatives.glob("*.fna")
+            )) + "\n"
         )
         Path(output.flag).touch()
-
 
 rule gtdbtk:
     # taxonomic classification of genomes
@@ -978,43 +1120,128 @@ rule retrieve_gtdb_metadata:
         """
 
 
+def taxonomy_csv_for_org(org):
+    """
+    Path to this organism's rank-split taxonomy CSV, regardless of which
+    checkpoint produced it (taxonomy_from_metadata in gtt mode,
+    split_taxonomy in ncbi mode). Both write the same path/schema, so every
+    caller goes through this instead of hardcoding one checkpoint.
+    """
+    ckpt = checkpoints.taxonomy_from_metadata if GTOTREE_MODE else checkpoints.split_taxonomy
+    return ckpt.get(org=org).output[0]
 
 
-checkpoint split_taxonomy:
-    # split the taxonomic levels into individual columns from the gtdbtk output
-    # also a checkpoint to revise the processes required to be run
+rule annotation_ready:
+    """
+    Single stable handoff into annotation. Both modes now reach this the
+    same way: dereplication finished, taxonomy resolved (from GTDB-Tk or
+    from metadata). gtdbtk itself is upstream of the taxonomy checkpoint
+    only in ncbi mode, so it's already implied here without a branch.
+    """
     input:
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
-
+        dedup    = f"{RUN_DIR}/skder/{{org}}/dedup_done.flag",
+        taxonomy = lambda wc: taxonomy_csv_for_org(wc.org)
     output:
-        f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
-    conda:
-        f"{config['run'].get('env_dir')}/Reg.yaml"
-    params:
-        tsv_file = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk.ar53.summary.tsv"
-    run:
-        import pandas as pd
+        flag = f"{RUN_DIR}/{{org}}/annotation_ready.flag"
+    shell:
+        "mkdir -p $(dirname {output.flag}) && touch {output.flag}"
 
-        df = pd.read_csv(params.tsv_file, sep="\t")
 
-        ranks = ["domain", "phylum", "class",
-                 "order", "family", "genus", "species"]
+def pick_column(df, candidates, description):
+    """
+    Return the first matching column from a list of candidate names.
 
-        tax_split = (
-            df["classification"]
-            .str.split(";", expand=True)
-            .iloc[:, :7]
-        )
-        tax_split.columns = ranks
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input DataFrame.
+    candidates : tuple or list[str]
+        Column names to search for, in priority order.
+    description : str
+        Human-readable description used in the error message.
 
-        for col in ranks:
-            tax_split[col] = tax_split[col].str.replace(
-                r"^[dpcofgs]__", "", regex=True
+    Returns
+    -------
+    str
+        Name of the matched column.
+    """
+    for col in candidates:
+        if col in df.columns:
+            return col
+
+    raise ValueError(
+        f"Could not find {description} column. "
+        f"Tried: {', '.join(candidates)}. "
+        f"Available columns: {', '.join(df.columns)}"
+    )
+
+
+if GTOTREE_MODE:
+
+    checkpoint taxonomy_from_metadata:
+        """
+        gtt mode only. GTDB metadata already carries domain..species as
+        individual columns (not a joined `classification` string), so there
+        is no rank-splitting to do - just select/rename and restrict to
+        genomes that survived dereplication.
+
+        Depends on skder's derep_list, not on gtdbtk: taxonomy is already
+        known from GTDB metadata, so classification is never run in this
+        mode. Only skder (dereplication) determines which genomes are
+        actually in scope for annotation.
+        """
+        input:
+            summary    = f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+            derep_list = f"{RUN_DIR}/skder/{{org}}/derep_genomes.txt"
+        output:
+            f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+        log:
+            f"{LOG_DIR}/taxonomy_from_metadata/{{org}}.log"
+        conda:
+            f"{config['run'].get('env_dir')}/Reg.yaml"
+        run:
+            df = pd.read_csv(input.summary, sep="\t", dtype=str)
+
+            genome_col = pick_column(
+                df, ("Assembly Accession", "accession", "genome", "user_genome"),
+                "genome accession",
             )
 
-        df = pd.concat([df, tax_split], axis=1)
-        df['genome_file'] = df['user_genome']
-        df.to_csv(output[0], index=False)
+            ranks = ["domain", "phylum", "class", "order", "family", "genus", "species"]
+            missing_ranks = [r for r in ranks if r not in df.columns]
+            if missing_ranks:
+                raise ValueError(
+                    f"GTDB metadata is missing rank columns: {missing_ranks}. "
+                    f"Columns found: {df.columns.tolist()}"
+                )
+
+            df["user_genome"] = df[genome_col].map(normalize_accession)
+            df["genome_file"] = df["user_genome"]
+
+            derep = {
+                line.strip()
+                for line in Path(input.derep_list).read_text().splitlines()
+                if line.strip()
+            }
+            df = df[df["user_genome"].isin(derep)].copy()
+
+            Path(output[0]).parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(output[0], index=False)
+
+else:
+
+    checkpoint split_taxonomy:
+        """ncbi mode only. Splits GTDB-Tk's own semicolon-joined lineage string."""
+        input:
+            flag = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
+        output:
+            f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+        conda:
+            f"{config['run'].get('env_dir')}/Reg.yaml"
+        params:
+            tsv_file = f"{RUN_DIR}/gtdbtk/{{org}}/{GTDBTK_PREFIX}.ar53.summary.tsv"
+        run:
+            split_lineage_table(pd.read_csv(params.tsv_file, sep="\t"), "classification", output[0])
 
 
 rule taxa_counts_gtdbtk:
@@ -1042,77 +1269,46 @@ rule taxa_counts_gtdbtk:
         """
 
 
-# ---- NEW: master-table accumulation (feature 2) ----------------------------
-
-rule update_master_checkm2:
-    """
-    Appends this run's CheckM2 quality reports (across all orgs) into a
-    single running master table, keyed by genome `Name`. Existing rows for
-    a genome are refreshed if it was reprocessed; genomes new to this run
-    are simply appended - so the master table always reflects every genome
-    ever assessed, not just this run's set.
-    """
+rule taxa_counts_gtt:
+    # plot taxacounts at class level
     input:
-        reports = expand(f"{RUN_DIR}/checkm2/{{org}}/quality_report.tsv", org=ORGS)
+        csv = f"{RUN_DIR}/{{org}}/genomes_summary.tsv"
     output:
-        master = f"{MASTER_DIR}/checkm2_quality_report.tsv"
-    run:
-        import pandas as pd
-        import os
+        plot = f"{RUN_DIR}/{{org}}/{{org}}_taxa_count.svg"
+    conda:
+        f"{config['run'].get('env_dir')}/bio-r.yaml"
+    params:
+        accession_column = config['download'].get('accession_column', 'ncbi_genbank_assembly_accession')
+    log:
+        f"{LOG_DIR}/taxa_counts/{{org}}.log"
+    message:
+        """
+        ==========================================
+        📊      Taxonomic Sampling Plot
+        ==========================================
+        """
+    shell:
+        """
+        mkdir -p $(dirname {log})
 
-        new_df = pd.concat(
-            [pd.read_csv(f, sep="\t") for f in input.reports],
-            ignore_index=True
-        )
+        tmp_csv=$(mktemp --suffix=.csv)
 
-        os.makedirs(MASTER_DIR, exist_ok=True)
+        trap 'rm -f "$tmp_csv"' EXIT
 
-        if UPDATE_MODE and os.path.exists(output.master):
-            old_df = pd.read_csv(output.master, sep="\t")
-            combined = pd.concat([old_df, new_df], ignore_index=True)
-        else:
-            combined = new_df
+        csvformat -t {input.csv} > "$tmp_csv"
 
-        combined = combined.drop_duplicates(subset="Name", keep="last")
-        combined.to_csv(output.master, sep="\t", index=False)
-
-
-rule update_master_gtdbtk:
-    """
-    Same idea as update_master_checkm2, but for GTDB-Tk taxonomic
-    classifications, keyed by `user_genome`.
-    """
-    input:
-        taxonomy = expand(
-            f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv",
-            org=ORGS
-        )
-    output:
-        master = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv"
-    run:
-        import pandas as pd
-        import os
-
-        new_df = pd.concat(
-            [pd.read_csv(f) for f in input.taxonomy],
-            ignore_index=True
-        )
-
-        os.makedirs(MASTER_DIR, exist_ok=True)
-
-        if UPDATE_MODE and os.path.exists(output.master):
-            old_df = pd.read_csv(output.master)
-            combined = pd.concat([old_df, new_df], ignore_index=True)
-        else:
-            combined = new_df
-
-        combined = combined.drop_duplicates(subset="user_genome", keep="last")
-        combined.to_csv(output.master, index=False)
-
+        Rscript {CURRENT_DIR}/bin/units/plot_taxa_counts.r \
+            -i "$tmp_csv" \
+            -c {params.accession_column} \
+            -o {output.plot} > {log} 2>&1
+        """
 
 # helper functions to get the bakta, interproscan and collation output for all genomes
 def _get_filtered_genome_list(org):
-    csv_path = checkpoints.split_taxonomy.get(org=org).output[0]
+    if GTOTREE_MODE:
+        csv_path = checkpoints.taxonomy_from_metadata.get(org=org).output[0]
+    else:
+        csv_path = checkpoints.split_taxonomy.get(org=org).output[0]
     df = pd.read_csv(csv_path)
     phyla = config['interproscan']['phylum_filter']
     if isinstance(phyla, str):
@@ -1147,7 +1343,6 @@ def get_interpro_files(wildcards):
 # 
 rule bakta:
     input:
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
         genome =  f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
     output:
         fasta = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
@@ -1180,7 +1375,6 @@ rule bakta:
 
 rule interproscan:
     input:
-        flag   = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
         faa = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
     output:
         tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
@@ -1237,7 +1431,6 @@ rule protein_summary_parquet:
 rule all_interproscan:
     input:
         parquet=f"{config['inputs']['out_ips_parquet']}_{{org}}.parquet",
-        flag=f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag"
     output:
         done_flag=f"{RUN_DIR}/interproscan/{{org}}/ips_done.flag"
     shell:
@@ -1257,6 +1450,140 @@ rule collate_proteins:
         """
 
 
+def concat_quality_reports(report_paths):
+    """Concatenate per-org quality_report.tsv files, normalizing accessions."""
+    df = pd.concat([pd.read_csv(f, sep="\t") for f in report_paths], ignore_index=True)
+    df["Name"] = df["Name"].map(normalize_accession)
+    return df
+
+
+def concat_taxonomy_tables(taxonomy_paths):
+    """Concatenate per-org taxonomy CSVs, normalizing accessions."""
+    df = pd.concat([pd.read_csv(f) for f in taxonomy_paths], ignore_index=True)
+    df["user_genome"] = df["user_genome"].map(normalize_accession)
+    df["genome_file"] = df["user_genome"]
+    return df
+
+
+if UPDATE_MODE:
+
+    
+    # ---- NEW: master-table accumulation (feature 2) ----------------------------
+
+    rule update_master_checkm2:
+        """
+        Appends this run's CheckM2 quality reports (across all orgs) into a
+        single running master table, keyed by genome `Name`. Existing rows for
+        a genome are refreshed if it was reprocessed; genomes new to this run
+        are simply appended - so the master table always reflects every genome
+        ever assessed, not just this run's set.
+        """
+        input:
+            reports = lambda wc: [quality_report_for_org(org) for org in ORGS]
+        output:
+            master = f"{MASTER_DIR}/checkm2_quality_report.tsv"
+        run:
+            import pandas as pd
+            import os
+
+            new_df = pd.concat(
+                [pd.read_csv(f, sep="\t") for f in input.reports],
+                ignore_index=True
+            )
+
+            os.makedirs(MASTER_DIR, exist_ok=True)
+
+            if UPDATE_MODE and os.path.exists(output.master):
+                old_df = pd.read_csv(output.master, sep="\t")
+                combined = pd.concat([old_df, new_df], ignore_index=True)
+            else:
+                combined = new_df
+
+            combined = combined.drop_duplicates(subset="Name", keep="last")
+            combined.to_csv(output.master, sep="\t", index=False)
+
+
+    rule update_master_gtdbtk:
+        """
+        Same idea as update_master_checkm2, but for GTDB-Tk taxonomic
+        classifications, keyed by `user_genome`.
+        """
+        input:
+            taxonomy = expand(
+                f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv",
+                org=ORGS
+            )
+        output:
+            master = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv"
+        run:
+            import pandas as pd
+            import os
+
+            new_df = pd.concat(
+                [pd.read_csv(f) for f in input.taxonomy],
+                ignore_index=True
+            )
+
+            os.makedirs(MASTER_DIR, exist_ok=True)
+
+            if UPDATE_MODE and os.path.exists(output.master):
+                old_df = pd.read_csv(output.master)
+                combined = pd.concat([old_df, new_df], ignore_index=True)
+            else:
+                combined = new_df
+
+            combined = combined.drop_duplicates(subset="user_genome", keep="last")
+            combined.to_csv(output.master, index=False)
+
+else:
+
+    rule run_scoped_quality_report:
+        """
+        fresh-run mode only. Aggregates just this run's per-org quality
+        reports across all orgs, written under RUN_DIR - never reads from or
+        writes to MASTER_DIR. This is what make_genome_csv reads instead of
+        the master table when UPDATE_MODE is False.
+        """
+        input:
+            reports = lambda wc: [quality_report_for_org(org) for org in ORGS]
+        output:
+            report = f"{RUN_DIR}/checkm2_quality_report.tsv"
+        run:
+            df = concat_quality_reports(input.reports)
+            df = df.drop_duplicates(subset="Name", keep="last")
+            Path(output.report).parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(output.report, sep="\t", index=False)
+
+    rule run_scoped_taxonomy:
+        """fresh-run mode only. Same idea, for taxonomy."""
+        input:
+            taxonomy = lambda wc: [taxonomy_csv_for_org(org) for org in ORGS]
+        output:
+            report = f"{RUN_DIR}/gtdbtk_classification.ar53.csv"
+        run:
+            df = concat_taxonomy_tables(input.taxonomy)
+            df = df.drop_duplicates(subset="user_genome", keep="last")
+            Path(output.report).parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(output.report, index=False)
+
+
+def genome_csv_quality_source():
+    """
+    Aggregated quality table make_genome_csv reads from: the persistent
+    MASTER_DIR table in update mode, or a run-scoped-only table in fresh mode
+    (see run_scoped_quality_report / update_master_checkm2 above).
+    """
+    return (
+        f"{MASTER_DIR}/checkm2_quality_report.tsv" if UPDATE_MODE
+        else f"{RUN_DIR}/checkm2_quality_report.tsv"
+    )
+
+
+def genome_csv_taxonomy_source():
+    return (
+        f"{MASTER_DIR}/gtdbtk_classification.ar53.csv" if UPDATE_MODE
+        else f"{RUN_DIR}/gtdbtk_classification.ar53.csv"
+    )
 
 rule make_genome_csv:
     """
@@ -1266,9 +1593,9 @@ rule make_genome_csv:
     generated dataset versions.
     """
     input:
-        flag     = f"{RUN_DIR}/gtdbtk/{{org}}/gtdbtk_done.flag",
-        checkm2  = f"{MASTER_DIR}/checkm2_quality_report.tsv",
-        taxonomy = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv"
+        flag     = f"{RUN_DIR}/{{org}}/annotation_ready.flag",
+        checkm2  = genome_csv_quality_source(),
+        taxonomy = genome_csv_taxonomy_source()
     output:
         filtered=f"{config['inputs']['out_genome_csv']}_{{org}}.csv",
         unfiltered=f"{config['inputs']['out_genome_csv_unfiltered']}_{{org}}.csv"

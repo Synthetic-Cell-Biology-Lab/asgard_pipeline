@@ -31,4 +31,5 @@ dependencies:
   - r-ggtext
   - r-viridis
   - r-ggrepel
+  - csvkit
 prefix: /root/miniconda3/envs/bio-r

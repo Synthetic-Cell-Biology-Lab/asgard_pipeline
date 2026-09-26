@@ -17,24 +17,34 @@ suppressPackageStartupMessages({
 # ==============================
 option_list <- list(
   make_option(c("-i", "--input"),  type="character", help="Input CSV"),
+  make_option(c("-c", "--accession-column"), type="character", default="genome_file",
+              help="Column name in CSV that contains unique genome identifiers (default: 'genome_file')"),
   make_option(c("-o", "--output"), type="character", help="Output SVG/PDF/PNG")
 )
 
 opt         <- parse_args(OptionParser(option_list=option_list))
 INPUT_CSV   <- opt$input
 OUTPUT_FILE <- opt$output
+ACC_COL      <- opt$`accession-column`
 
 # ==============================
 # LOAD & DEDUPLICATE
 # ==============================
 df <- read_csv(INPUT_CSV, show_col_types = FALSE)
 
-if (!all(c("class", "order", "genome_file") %in% colnames(df))) {
-  stop("CSV must contain 'class', 'order', and 'genome_file' columns")
+if (!all(c("class", "order", ACC_COL) %in% colnames(df))) {
+
+  print("CSV headers:")
+  print(colnames(df))
+
+  stop("CSV must contain 'class', 'order', and the specified accession column")
 }
 
+colnames(df)
+
+
 df <- df %>%
-  group_by(genome_file) %>%
+  group_by(.data[[ACC_COL]]) %>%
   slice(1) %>%
   ungroup() %>%
   mutate(
