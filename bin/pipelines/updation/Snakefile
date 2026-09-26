@@ -27,7 +27,7 @@ CURRENT_DIR = config["run"].get('base_dir', workflow.basedir)
 
 
 #
-# STORE_DIR  : canonical, deduplicated pool of raw genome FASTAs and bakta
+# STORE_DIR  : canonical, deduplicated pool of raw genome FASTAs and PGAP
 #              annotations. Persists across runs; never duplicated on disk.
 # MASTER_DIR : accumulating master tables (checkm2 / gtdbtk) that grow across
 #              runs instead of being siloed per run.
@@ -138,20 +138,20 @@ def get_org_param(wc, field, default=None):
 
 
 # =========================
-# Bakta configuration
+# PGAP configuration
 # =========================
 #
-# NOTE: bakta/interproscan annotations are canonical too - they're expensive
+# NOTE: PGAP/interproscan annotations are canonical too - they're expensive
 # and reusable across runs, so (like raw genomes) they live under STORE_DIR
 # unless the user points at an existing external annotation directory.
 
-BAKTA_EXISTING = config.get("cds", {}).get("existing")
+PGAP_EXISTING = config.get("cds", {}).get("existing")
 
-if BAKTA_EXISTING:
-    BAKTA_OUTDIR     = Path(BAKTA_EXISTING)
-    EXISTING_GENOMES = {p.name for p in BAKTA_OUTDIR.iterdir() if p.is_dir()}
+if PGAP_EXISTING:
+    PGAP_OUTDIR     = Path(PGAP_EXISTING)
+    EXISTING_GENOMES = {p.name for p in PGAP_OUTDIR.iterdir() if p.is_dir()}
 else:
-    BAKTA_OUTDIR     = Path(f"{STORE_DIR}/bakta")
+    PGAP_OUTDIR     = Path(f"{STORE_DIR}/PGAP")
     EXISTING_GENOMES = set()
 
 # =========================
@@ -166,9 +166,7 @@ FINAL = [
         expand(f"{config['inputs']['out_fasta']}_{{org}}.faa" ,org = ORGS),
         expand(f"{config['inputs']['out_genome_csv']}_{{org}}.csv", org = ORGS),
         expand(f"{config['inputs']['out_protein_csv']}_{{org}}.csv", org = ORGS),
-        # NEW: master tables + manually-added genomes are always in scope
-        f"{MASTER_DIR}/checkm2_quality_report.tsv",
-        f"{MASTER_DIR}/gtdbtk_classification.ar53.csv",
+
         expand(f"{STORE_DIR}/genomes/{{accession}}.fna", accession=ALL_MANUAL_ACCESSIONS),
         expand(f"{config['inputs']['out_ips_parquet']}_{{org}}.parquet", org = ORGS),
         expand(f"{config['inputs']['out_ips_parquet']}_{{org}}_summary.parquet", org = ORGS)
@@ -190,6 +188,13 @@ else:
         ]
     )
 
+if UPDATE_MODE:
+    FINAL.extend([
+                # NEW: master tables + manually-added genomes are always in scope
+        f"{MASTER_DIR}/checkm2_quality_report.tsv",
+        f"{MASTER_DIR}/gtdbtk_classification.ar53.csv",
+    ])
+
 
 rule all:
     input:
@@ -202,7 +207,7 @@ rule all:
 # get the list of genomes that is already present in our database
 rule check_database:
     params:
-        input_path = f"{BAKTA_OUTDIR}/{{org}}/"
+        input_path = f"{PGAP_OUTDIR}/{{org}}/"
     output:
         genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt"
     conda:
@@ -727,7 +732,7 @@ rule add_manual_genome:
 
     Once in the store, `link_run_genomes` symlinks it into any org's run
     directory that lists it under `manual_genomes`, and it flows through
-    checkm2 / dereplication / gtdbtk / bakta like any other genome.
+    checkm2 / dereplication / gtdbtk / PGAP like any other genome.
     """
     output:
         genome = f"{STORE_DIR}/genomes/{{accession}}.fna"
@@ -770,7 +775,7 @@ rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see no
         Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
         
         metadata = pd.read_csv(input.summary, sep="\t", dtype=str)
-        print(metadata.columns.tolist())
+        Path(log[0]).write_text("These are the columns: \n" + "\n".join(metadata.columns.tolist()))
         accession_column = next((c for c in ("Assembly Accession", "accession", "genome", "user_genome") if c in metadata.columns), None)
         if not accession_column or not {"checkm2_completeness", "checkm2_contamination"}.issubset(metadata.columns):
             raise ValueError("GToTree metadata must contain accession, checkm2_completeness, and checkm2_contamination columns")
@@ -795,8 +800,8 @@ rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see no
             "Max_Contig_Length": pd.to_numeric(metadata.get("longest_contig", ""), errors="coerce"),
         })
         requested = {normalize_accession(p) for p in Path(stage_dir(wildcards.org, "raw")).glob("*.fna")}
-        print(requested)
-        print(report['Assembly_Name'])
+        Path(log[0]).write_text(f"Requested genomes: {', '.join(sorted(requested))}")
+        Path(log[0]).write_text(f"Report genomes: {', '.join(sorted(report['Assembly_Name']))}")
         report = report[report["Assembly_Name"].isin(requested)]
         missing = requested - set(report["Assembly_Name"])
         if missing:
@@ -1177,57 +1182,351 @@ def pick_column(df, candidates, description):
 
 
 if GTOTREE_MODE:
-
     checkpoint taxonomy_from_metadata:
         """
-        gtt mode only. GTDB metadata already carries domain..species as
-        individual columns (not a joined `classification` string), so there
-        is no rank-splitting to do - just select/rename and restrict to
-        genomes that survived dereplication.
-
-        Depends on skder's derep_list, not on gtdbtk: taxonomy is already
-        known from GTDB metadata, so classification is never run in this
-        mode. Only skder (dereplication) determines which genomes are
-        actually in scope for annotation.
+        GTT mode only. Select taxonomy ranks from GTDB metadata
+        and restrict to genomes surviving skder dereplication.
         """
+
         input:
-            summary    = f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
-            derep_list = f"{RUN_DIR}/skder/{{org}}/derep_genomes.txt"
+            summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+            derep_list=f"{RUN_DIR}/skder/{{org}}/derep_genomes.txt"
+
         output:
             f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
+
         log:
             f"{LOG_DIR}/taxonomy_from_metadata/{{org}}.log"
+
         conda:
             f"{config['run'].get('env_dir')}/Reg.yaml"
+
         run:
-            df = pd.read_csv(input.summary, sep="\t", dtype=str)
+            import os
+            import time
+            import traceback
+            from pathlib import Path
+            import contextlib
 
-            genome_col = pick_column(
-                df, ("Assembly Accession", "accession", "genome", "user_genome"),
-                "genome accession",
-            )
+            import pandas as pd
 
-            ranks = ["domain", "phylum", "class", "order", "family", "genus", "species"]
-            missing_ranks = [r for r in ranks if r not in df.columns]
-            if missing_ranks:
-                raise ValueError(
-                    f"GTDB metadata is missing rank columns: {missing_ranks}. "
-                    f"Columns found: {df.columns.tolist()}"
-                )
+            # --------------------------------------------------
+            # Logging setup
+            # --------------------------------------------------
 
-            df["user_genome"] = df[genome_col].map(normalize_accession)
-            df["genome_file"] = df["user_genome"]
-
-            derep = {
-                line.strip()
-                for line in Path(input.derep_list).read_text().splitlines()
-                if line.strip()
-            }
-            df = df[df["user_genome"].isin(derep)].copy()
-
+            Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
             Path(output[0]).parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(output[0], index=False)
 
+            def logmsg(message):
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{timestamp}] [taxonomy_from_metadata] {message}", flush=True)
+
+            with open(log[0], "w") as logfile:
+                with contextlib.redirect_stdout(logfile), \
+                contextlib.redirect_stderr(logfile):
+                    try:
+                    
+                        logmsg("=" * 80)
+                        logmsg(f"STARTING CHECKPOINT: taxonomy_from_metadata")
+                        logmsg(f"Wildcard org: {wildcards.org}")
+                        logmsg(f"Working directory: {Path.cwd()}")
+                        logmsg(f"Threads allocated: {threads}")
+
+                        # --------------------------------------------------
+                        # Input diagnostics
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("INPUT FILES")
+
+                        for label, filepath in [
+                            ("summary", input.summary),
+                            ("derep_list", input.derep_list),
+                        ]:
+                            p = Path(filepath)
+
+                            logmsg(f"{label}: {p}")
+                            logmsg(f"  Exists: {p.exists()}")
+
+                            if p.exists():
+                                stat = p.stat()
+                                logmsg(f"  Size: {stat.st_size:,} bytes")
+                                logmsg(f"  Modified: {time.ctime(stat.st_mtime)}")
+
+                        summary_path = Path(input.summary)
+                        derep_path = Path(input.derep_list)
+
+                        if not summary_path.exists():
+                            raise FileNotFoundError(
+                                f"Metadata summary does not exist: {summary_path}"
+                            )
+
+                        if not derep_path.exists():
+                            raise FileNotFoundError(
+                                f"Dereplication list does not exist: {derep_path}"
+                            )
+
+                        # --------------------------------------------------
+                        # Read metadata
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("READING GTDB METADATA")
+
+                        logmsg(f"Reading: {summary_path}")
+
+                        df = pd.read_csv(
+                            summary_path,
+                            sep="\t",
+                            dtype=str,
+                        )
+
+                        logmsg(f"Metadata shape: {df.shape}")
+                        logmsg(f"Metadata rows: {len(df):,}")
+                        logmsg(f"Metadata columns ({len(df.columns)}):")
+
+                        for i, column in enumerate(df.columns, start=1):
+                            logmsg(f"  {i:03d}. {column!r}")
+
+                        logmsg(f"First 5 rows:\n{df.head().to_string()}")
+
+                        # --------------------------------------------------
+                        # Identify accession column
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("IDENTIFYING GENOME ACCESSION COLUMN")
+
+                        accession_candidates = (
+                            "Assembly Accession",
+                            "accession",
+                            "genome",
+                            "user_genome",
+                        )
+
+                        logmsg(f"Candidates: {accession_candidates}")
+
+                        genome_col = pick_column(
+                            df,
+                            accession_candidates,
+                            "genome accession",
+                        )
+
+                        logmsg(f"Selected accession column: {genome_col!r}")
+
+                        logmsg("First 10 raw accessions:")
+
+                        for value in df[genome_col].head(10):
+                            logmsg(f"  {value!r}")
+
+                        # --------------------------------------------------
+                        # Validate taxonomy columns
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("VALIDATING TAXONOMY RANKS")
+
+                        ranks = [
+                            "domain",
+                            "phylum",
+                            "class",
+                            "order",
+                            "family",
+                            "genus",
+                            "species",
+                        ]
+
+                        logmsg(f"Required ranks: {ranks}")
+
+                        missing_ranks = [
+                            rank for rank in ranks
+                            if rank not in df.columns
+                        ]
+
+                        if missing_ranks:
+                            logmsg(f"Missing taxonomy ranks: {missing_ranks}")
+                            logmsg(f"Available columns: {df.columns.tolist()}")
+
+                            raise ValueError(
+                                f"GTDB metadata is missing rank columns: "
+                                f"{missing_ranks}. "
+                                f"Columns found: {df.columns.tolist()}"
+                            )
+
+                        logmsg("All required taxonomy ranks are present.")
+
+                        for rank in ranks:
+                            n_missing = df[rank].isna().sum()
+                            n_unique = df[rank].nunique(dropna=True)
+
+                            logmsg(
+                                f"{rank}: "
+                                f"unique={n_unique:,}, "
+                                f"missing={n_missing:,}"
+                            )
+
+                        # --------------------------------------------------
+                        # Normalize accession identifiers
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("NORMALIZING ACCESSIONS")
+
+                        df["user_genome"] = df[genome_col].map(
+                            normalize_accession
+                        )
+
+                        df["user_genome"] = df["user_genome"] + "_" + df.get("ncbi_assembly_name", "").fillna("") + "_genomic"
+
+                        logmsg("First 10 normalized accessions:")
+
+                        for raw, normalized in zip(
+                            df[genome_col].head(10),
+                            df["user_genome"].head(10),
+                        ):
+                            logmsg(f"  {raw!r} -> {normalized!r}")
+
+                        n_null_accessions = df["user_genome"].isna().sum()
+
+                        logmsg(
+                            f"Null normalized accessions: "
+                            f"{n_null_accessions:,}"
+                        )
+
+                        logmsg(
+                            f"Unique normalized accessions: "
+                            f"{df['user_genome'].nunique():,}"
+                        )
+
+                        # --------------------------------------------------
+                        # Read dereplication list
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("READING DEREPLICATION LIST")
+
+                        derep_lines = derep_path.read_text().splitlines()
+
+                        logmsg(f"Raw lines in derep list: {len(derep_lines):,}")
+
+                        derep = {
+                            line.strip()
+                            for line in derep_lines
+                            if line.strip()
+                        }
+
+                        logmsg(f"Unique dereplicated genomes: {len(derep):,}")
+
+                        logmsg("First 10 dereplicated identifiers:")
+
+                        for genome in sorted(derep)[:10]:
+                            logmsg(f"  {genome!r}")
+
+                        # --------------------------------------------------
+                        # Compare identifiers before filtering
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("COMPARING METADATA AND DEREP IDENTIFIERS")
+
+                        metadata_ids = set(df["user_genome"].dropna())
+
+                        matched = metadata_ids & derep
+                        missing_from_metadata = derep - metadata_ids
+                        not_dereplicated = metadata_ids - derep
+
+                        logmsg(f"Metadata unique IDs: {len(metadata_ids):,}")
+                        logmsg(f"Derep unique IDs: {len(derep):,}")
+                        logmsg(f"Matched IDs: {len(matched):,}")
+
+                        logmsg(
+                            f"Derep IDs absent from metadata: "
+                            f"{len(missing_from_metadata):,}"
+                        )
+
+                        logmsg(
+                            f"Metadata IDs not in derep list: "
+                            f"{len(not_dereplicated):,}"
+                        )
+
+                        if missing_from_metadata:
+                            logmsg("First 20 derep IDs absent from metadata:")
+
+                            for genome in sorted(missing_from_metadata)[:20]:
+                                logmsg(f"  {genome!r}")
+
+                        if not_dereplicated:
+                            logmsg("First 20 metadata IDs not dereplicated:")
+
+                            for genome in sorted(not_dereplicated)[:20]:
+                                logmsg(f"  {genome!r}")
+
+                        # --------------------------------------------------
+                        # Filter to dereplicated genomes
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("FILTERING METADATA TO DEREPLICATED GENOMES")
+
+                        rows_before = len(df)
+
+                        df = df[df["user_genome"].isin(derep)].copy()
+
+                        rows_after = len(df)
+
+                        logmsg(f"Rows before filtering: {rows_before:,}")
+                        logmsg(f"Rows after filtering: {rows_after:,}")
+                        logmsg(f"Rows removed: {rows_before - rows_after:,}")
+
+                        logmsg(
+                            f"Unique genomes after filtering: "
+                            f"{df['user_genome'].nunique():,}"
+                        )
+
+                        if df.empty:
+                            logmsg("WARNING: No genomes remain after filtering!")
+
+                        # --------------------------------------------------
+                        # Output diagnostics and writing
+                        # --------------------------------------------------
+
+                        logmsg("-" * 80)
+                        logmsg("WRITING OUTPUT")
+
+                        out_path = Path(output[0])
+
+                        logmsg(f"Output path: {out_path}")
+                        logmsg(f"Output directory exists: {out_path.parent.exists()}")
+
+                        logmsg(f"Output columns: {df.columns.tolist()}")
+
+                        df.to_csv(
+                            out_path,
+                            index=False,
+                        )
+
+                        logmsg("Output written successfully.")
+
+                        if out_path.exists():
+                            stat = out_path.stat()
+
+                            logmsg(f"Output size: {stat.st_size:,} bytes")
+                            logmsg(f"Output modified: {time.ctime(stat.st_mtime)}")
+
+                            check = pd.read_csv(out_path, dtype=str)
+
+                            logmsg(f"Output read-back shape: {check.shape}")
+                            logmsg(f"Output columns: {check.columns.tolist()}")
+
+                        logmsg("CHECKPOINT COMPLETED SUCCESSFULLY")
+                        logmsg("=" * 80)
+
+                    except Exception:
+                        logmsg("CHECKPOINT FAILED")
+                        logmsg(traceback.format_exc())
+                        raise
+
+                
 else:
 
     checkpoint split_taxonomy:
@@ -1303,7 +1602,7 @@ rule taxa_counts_gtt:
             -o {output.plot} > {log} 2>&1
         """
 
-# helper functions to get the bakta, interproscan and collation output for all genomes
+# helper functions to get the PGAP, interproscan and collation output for all genomes
 def _get_filtered_genome_list(org):
     if GTOTREE_MODE:
         csv_path = checkpoints.taxonomy_from_metadata.get(org=org).output[0]
@@ -1318,69 +1617,99 @@ def _get_filtered_genome_list(org):
 
 def filtered_genomes_for_org(wildcards):
     genomes = _get_filtered_genome_list(wildcards.org)
-    return expand(f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
+    return expand(f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
                   org=wildcards.org, genome=genomes)
 
 def filtered_faa_for_org(wildcards):
     genomes = _get_filtered_genome_list(wildcards.org)
-    return expand(f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+    return expand(f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
                   org=wildcards.org, genome=genomes)
 
 def filtered_tsv_for_org(wildcards):
     genomes = _get_filtered_genome_list(wildcards.org)
-    return expand(f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv",
+    return expand(f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv",
                   org=wildcards.org, genome=genomes)
 
 
 def get_interpro_files(wildcards):
     return expand(
-        f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
+        f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
         org=wildcards.org,
         genome=_get_filtered_genome_list(wildcards)
     )
 
 
 # 
-rule bakta:
+
+rule pgap:
     input:
         genome =  f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
     output:
-        fasta = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
-        tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
+        fasta = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+        tsv = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
     params:
-        outdir = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}",
-        prefix   = "{genome}",
-        bakta_db = config.get("cds", {}).get("bakta_db", "")
+        outdir = f"{PGAP_OUTDIR}/{{org}}/{{genome}}",
+        prefix   = "{genome}"
     threads: 4
     conda:
-        f"{config['run'].get('env_dir')}/bakta.yaml"
+        f"{config['run'].get('env_dir')}/pgap.yaml"
     log:
-        f"{LOG_DIR}/bakta/{{org}}/{{genome}}.log"
+        f"{LOG_DIR}/pgap/{{org}}/{{genome}}.log"
     shell:
         """
         mkdir -p {params.outdir}
         mkdir -p $(dirname {log})
 
-        bakta \
-            --db {params.bakta_db} \
-            --output {params.outdir} \
+        pgap.py \
+            -r \
+            -o {params.outdir} \
             --prefix {params.prefix} \
             --threads {threads} \
-            --force \
             {input.genome} > {log} 2>&1
         """
+
+# rule bakta:
+#     input:
+#         genome =  f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
+#     output:
+#         fasta = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+#         tsv = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
+#     params:
+#         outdir = f"{PGAP_OUTDIR}/{{org}}/{{genome}}",
+#         prefix   = "{genome}",
+#         bakta_db = config.get("cds", {}).get("bakta_db", "")
+#     threads: 4
+#     conda:
+#         f"{config['run'].get('env_dir')}/bakta.yaml"
+#     log:
+#         f"{LOG_DIR}/bakta/{{org}}/{{genome}}.log"
+#     shell:
+#         """
+#         mkdir -p {params.outdir}
+#         mkdir -p $(dirname {log})
+
+#         bakta \
+#             --db {params.bakta_db} \
+#             --output {params.outdir} \
+#             --prefix {params.prefix} \
+#             --threads {threads} \
+#             --force \
+#             {input.genome} > {log} 2>&1
+#         """
+
+
 
 
 
 
 rule interproscan:
     input:
-        faa = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+        faa = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
     output:
-        tsv = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
+        tsv = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
     params:
-        base  = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains",
-        clean = f"{BAKTA_OUTDIR}/{{org}}/{{genome}}/{{genome}}_clean.faa"
+        base  = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains",
+        clean = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_clean.faa"
     threads: 16
     resources:
         mem_mb = 30000
@@ -1709,7 +2038,7 @@ rule make_protein_csv:
             with open(tsv_file) as f:
                 first = next(f)
 
-            if "Bakta" in first:
+            if "PGAP" in first:
                 df = pd.read_csv(tsv_file, sep="\t", skiprows=6, header=None)
                 df.columns = [
                     "Sequence Id",
@@ -1726,7 +2055,7 @@ rule make_protein_csv:
                 df = pd.read_csv(tsv_file, sep="\t")
 
             # ---------------------------------------------------------
-            # Bakta
+            # PGAP
             # ---------------------------------------------------------
             if "Locus Tag" in df.columns:
 

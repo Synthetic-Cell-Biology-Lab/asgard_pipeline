@@ -27,7 +27,7 @@ cds:
   bakta_db: "/home/anirudh/asgard_pipeline/database/software_dbs/bakta/db"
   existing: "/home/anirudh/asgard_pipeline/database/cds_genomes"
 organisms:
-  - name: "Asgardarchaeota"
+  - name: "asgardarchaeota" # this determines the name of the output folder for bakta and interproscan
     assembly_level: 
     refseq_only: false
 deduplication:
@@ -62,7 +62,7 @@ download:
   # Choose `gtotree` for GToTree GTDB metadata/accessions, or `ncbi` for NCBI taxon search.
   source: gtotree
   gtotree_command: gtt-get-accessions-from-GTDB
-  gtt_taxon: Asgardarchaeota
+  gtt_taxon: Asgardarchaeota # this is purely for the retrieval from gtt
   accession_column: ncbi_genbank_assembly_accession # or genome_file if downloaded from ncbi
 interproscan:
   phylum_filter: Asgardarchaeota
