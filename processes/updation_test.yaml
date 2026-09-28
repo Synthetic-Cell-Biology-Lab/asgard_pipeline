@@ -3,12 +3,12 @@ run:
   reason: "test run 5"
   cores: 12
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs"
-  id: asgard_collation_v6
+  id: asgard_collation_v3
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   base_dir: "/home/anirudh/asgard_pipeline"
   output_dir: "/home/anirudh/asgard_pipeline/database/raw_genomes"
   # true accumulates prior STORE_DIR genomes; false creates an isolated fresh set.
-  update: false
+  update: true
 
 
 inputs:
@@ -26,6 +26,7 @@ inputs:
 cds:
   bakta_db: "/home/anirudh/asgard_pipeline/database/software_dbs/bakta/db"
   existing: "/home/anirudh/asgard_pipeline/database/cds_genomes"
+  pgap_script: "/home/anirudh/asgard_pipeline/bin/external_software/pgap.py"
 organisms:
   - name: "asgardarchaeota" # this determines the name of the output folder for bakta and interproscan
     assembly_level: 

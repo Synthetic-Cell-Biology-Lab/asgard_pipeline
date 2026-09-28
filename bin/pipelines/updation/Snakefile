@@ -27,7 +27,7 @@ CURRENT_DIR = config["run"].get('base_dir', workflow.basedir)
 
 
 #
-# STORE_DIR  : canonical, deduplicated pool of raw genome FASTAs and PGAP
+# STORE_DIR  : canonical, deduplicated pool of raw genome FASTAs and CDS_pred
 #              annotations. Persists across runs; never duplicated on disk.
 # MASTER_DIR : accumulating master tables (checkm2 / gtdbtk) that grow across
 #              runs instead of being siloed per run.
@@ -138,20 +138,25 @@ def get_org_param(wc, field, default=None):
 
 
 # =========================
-# PGAP configuration
+# CDS_pred configuration
 # =========================
 #
-# NOTE: PGAP/interproscan annotations are canonical too - they're expensive
+# NOTE: CDS_pred/interproscan annotations are canonical too - they're expensive
 # and reusable across runs, so (like raw genomes) they live under STORE_DIR
 # unless the user points at an existing external annotation directory.
 
-PGAP_EXISTING = config.get("cds", {}).get("existing")
+CDS_pred_EXISTING = config.get("cds", {}).get("existing")
 
-if PGAP_EXISTING:
-    PGAP_OUTDIR     = Path(PGAP_EXISTING)
-    EXISTING_GENOMES = {p.name for p in PGAP_OUTDIR.iterdir() if p.is_dir()}
+from pathlib import Path
+from snakemake.exceptions import WorkflowError
+
+CDS_pred_SCRIPT = config.get("cds", {}).get("CDS_pred_script", "")
+
+if CDS_pred_EXISTING:
+    CDS_pred_OUTDIR     = Path(CDS_pred_EXISTING)
+    EXISTING_GENOMES = {p.name for p in CDS_pred_OUTDIR.iterdir() if p.is_dir()}
 else:
-    PGAP_OUTDIR     = Path(f"{STORE_DIR}/PGAP")
+    CDS_pred_OUTDIR     = Path(f"{STORE_DIR}/CDS_pred")
     EXISTING_GENOMES = set()
 
 # =========================
@@ -207,16 +212,24 @@ rule all:
 # get the list of genomes that is already present in our database
 rule check_database:
     params:
-        input_path = f"{PGAP_OUTDIR}/{{org}}/"
+        fully_run = f"{CDS_pred_OUTDIR}/{{org}}/",
+        genomes_downloaded = f"{STORE_DIR}/genomes/",
+
     output:
-        genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt"
+        genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt",
+        results_present = f"{RUN_DIR}/{{org}}/results_present.txt"
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
     shell:
         """
-        mkdir -p {params.input_path}
-        touch {output}
-        find {params.input_path} -maxdepth 1 -mindepth 1 -type d -printf '%f\n' > {output}
+        mkdir -p {params.fully_run}
+        mkdir -p {params.genomes_downloaded}
+        touch {output.results_present}
+        find {params.fully_run} -maxdepth 1 -mindepth 1 -type d -printf '%f\n' > {output.results_present}
+        touch {output.genomes_present}
+        find {params.genomes_downloaded} -maxdepth 1 -mindepth 1 -type f -name '*.fna' -printf '%f\n' | sed 's/\.fna$//' > {output.genomes_present}
+
+
 
         """
 
@@ -358,37 +371,71 @@ else:
                 > {output.summary} 2> {log}'''
 
 
-
 rule prepare_download_list:
     """
-    Takes the summary file, subtracts genomes already present (annotated in a
-    prior run), genomes already sitting in the canonical STORE_DIR pool
-    (downloaded by this or any earlier run), and genomes that are being
-    supplied manually for this org (see `manual_genomes` in config, handled
-    by `add_manual_genome` / `link_run_genomes`). What's left is the true
-    delta that actually needs to be fetched from NCBI this run.
+    Takes the summary file and subtracts genomes already sitting in the
+    canonical STORE_DIR pool (downloaded by this or any earlier run) --
+    that exclusion always applies, in every mode, since re-downloading a
+    genome file that's already on disk is wasted compute regardless of
+    whether you intend to reprocess it.
+
+    Genomes already annotated in a prior run (present_list) or already
+    having results (results_present) are ONLY excluded in UPDATE_MODE --
+    that's a "reuse existing analysis" decision, not a "don't waste
+    download bandwidth" decision, so it must not apply in fresh mode. In
+    fresh mode, a genome with existing results still gets reprocessed; it
+    just isn't re-downloaded if store_have already has the file.
+
+    Genomes being supplied manually for this org (see `manual_genomes` in
+    config, handled by `add_manual_genome` / `link_run_genomes`) are never
+    auto-downloaded, in any mode.
+
+    What's left in accession_list is the true delta that needs fetching
+    from NCBI this run. link_list records genomes skipped from download
+    (and, in UPDATE_MODE only, from reprocessing) because results already
+    exist for them, so link_run_genomes can pull them in from the store.
     """
     input:
         summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
-        genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt"
+        genomes_present = f"{RUN_DIR}/{{org}}/present_list.txt",
+        results_present = f"{RUN_DIR}/{{org}}/results_present.txt"
     output:
-        accession_list = f"{RUN_DIR}/{{org}}/accession_list_to_download.txt"
+        accession_list = f"{RUN_DIR}/{{org}}/accession_list_to_download.txt",
+        link_list = f"{RUN_DIR}/{{org}}/link_list.txt"
+    log:
+        f"{LOG_DIR}/prepare_download_list/{{org}}.log"
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
     run:
         import pandas as pd
         from pathlib import Path
 
+        def log_msg(msg):
+            with open(log[0], "a") as f:
+                f.write(msg + "\n")
+
         summary_df = pd.read_csv(input.summary, sep="\t")
+
         with open(input.genomes_present) as f:
             present_list = [
                 "_".join(line.strip().split("_")[:2])
                 for line in f
                 if line.strip()
             ]
+        log_msg(f"Genomes already present in this run: {len(present_list)}")
+        log_msg(f"Genomes already present in this run: {present_list}")
 
-        # In fresh mode only genomes selected for this run are considered.
-        # Update mode reuses the canonical store and annotation inventory.
+        with open(input.results_present) as f:
+            results_present_list = [
+                "_".join(line.strip().split("_")[:2])
+                for line in f
+                if line.strip()
+            ]
+        log_msg(f"Genomes with existing results: {len(results_present_list)}")
+
+        # store_have: genome file already on disk. Excluded from download
+        # in EVERY mode -- this is purely about not wasting download
+        # bandwidth/compute, independent of whether we'll reprocess it.
         store_dir = Path(STORE_DIR, "genomes")
         store_dir.mkdir(parents=True, exist_ok=True)
         store_have = {p.stem for p in store_dir.glob("*.fna")}
@@ -397,14 +444,31 @@ rule prepare_download_list:
         manual = set(manual_accessions(wildcards.org))
 
         selected = set(summary_df['Assembly Accession'].dropna().astype(str).tolist()) - manual
-        to_be_downloaded = selected - manual
+
+        # Always skip downloading genomes we already have a file for,
+        # regardless of mode.
+        to_be_downloaded = selected - store_have
+        log_msg(f"Skipped download (already in store): {len(selected & store_have)}")
+
+        # Reusing existing analysis (present_list / results_present) is an
+        # UPDATE_MODE-only decision -- fresh mode always reprocesses,
+        # even if results already exist.
+        results_present_set = set()
         if UPDATE_MODE:
-            to_be_downloaded -= set(present_list) | store_have
+            results_present_set = set(results_present_list) & selected
+            to_be_downloaded -= set(present_list) | results_present_set
+            log_msg(f"Skipped download+reprocessing (existing results, UPDATE_MODE): {len(results_present_set)}")
 
         with open(output.accession_list, 'w') as out:
             out.write("\n".join(sorted(to_be_downloaded)))
-        
+        log_msg(f"Genomes to be downloaded: {len(to_be_downloaded)}")
 
+        # Genomes skipped because results already exist (UPDATE_MODE only)
+        # still need to be linked into this run for downstream rules to
+        # find them, instead of being reprocessed.
+        with open(output.link_list, 'w') as out:
+            out.write("\n".join(sorted(results_present_set)))
+        log_msg(f"Genomes to be linked (results reused, download+reprocessing skipped): {len(results_present_set)}")
 
 
 
@@ -456,8 +520,8 @@ rule extract_genomes:
     shell:
         """
         mkdir -p $(dirname {log})
-        mkdir -p {STORE_DIR}/genomes
-        EXTRACT_DIR={RUN_DIR}/{wildcards.org}/extracted
+        mkdir -p "{STORE_DIR}/genomes"
+        EXTRACT_DIR="{RUN_DIR}/{wildcards.org}/extracted"
 
         if [ -s {input.zipfile} ]; then
             mkdir -p $EXTRACT_DIR
@@ -480,243 +544,120 @@ rule extract_genomes:
 
         touch {output.flag}
         """
+
+
 rule link_run_genomes:
     """
     Assemble this run's genome directory using symlinks into STORE_DIR.
 
-    Automatically downloaded genomes and manually added genomes converge
-    into RUN_DIR/{org}/genomes without duplicating the underlying .fna files.
+    Genomes come from three sources: the run's genomes_summary.tsv, manually
+    supplied genomes (manual_accessions), and -- in UPDATE_MODE only --
+    genomes previously linked/annotated (manifest) plus genomes prepare_
+    download_list routed to link_list because results already exist for
+    them. In fresh mode link_list.txt is always empty (see prepare_
+    download_list), so this rule needs no UPDATE_MODE branching of its own
+    for that source -- it naturally does nothing outside update mode.
 
     Genome files are searched recursively inside STORE_DIR/genomes.
     """
-
     input:
         download_flag=f"{RUN_DIR}/{{org}}/download_done.flag",
         summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+        link_list=f"{RUN_DIR}/{{org}}/link_list.txt",
         manual_genomes=lambda wc: expand(
             f"{STORE_DIR}/genomes/{{accession}}.fna",
             accession=manual_accessions(wc.org)
         )
-
     output:
         flag=f"{RUN_DIR}/{{org}}/done.flag",
         genomes=directory(f"{RUN_DIR}/{{org}}/genomes"),
         manifest=f"{STORE_DIR}/organisms/{{org}}.accessions.txt"
-
     log:
         f"{LOG_DIR}/link_genomes/{{org}}.log"
-
     conda:
         f"{config['run'].get('env_dir')}/Reg.yaml"
-
     run:
         import os
+        import shutil
         import pandas as pd
         from pathlib import Path
 
-        # ------------------------------------------------------------
-        # Directories
-        # ------------------------------------------------------------
+        def log_msg(msg):
+            with open(log[0], "a") as f:
+                f.write(f"{msg}\n")
+
+        def read_lines(path):
+            return {l.strip() for l in Path(path).read_text().splitlines() if l.strip()}
 
         genomes_dir = Path(output.genomes)
         genomes_dir.mkdir(parents=True, exist_ok=True)
-
         manifest = Path(output.manifest)
         manifest.parent.mkdir(parents=True, exist_ok=True)
-
         store_dir = Path(STORE_DIR) / "genomes"
-
         if not store_dir.exists():
-            raise FileNotFoundError(
-                f"Genome store does not exist: {store_dir}"
-            )
+            raise FileNotFoundError(f"Genome store does not exist: {store_dir}")
 
-        # ------------------------------------------------------------
-        # Read accessions from summary
-        # ------------------------------------------------------------
-
-        summary_df = pd.read_csv(
-            input.summary,
-            sep="\t",
-            dtype=str
-        )
-
-        print("Summary columns:")
-        print(summary_df.columns.tolist())
-
+        # ---- gather accessions from every source ----
+        summary_df = pd.read_csv(input.summary, sep="\t", dtype=str)
         if "Assembly Accession" not in summary_df.columns:
             raise ValueError(
-                "'Assembly Accession' column not found in "
-                f"{input.summary}. Columns found: "
-                f"{summary_df.columns.tolist()}"
+                f"'Assembly Accession' column not found in {input.summary}. "
+                f"Columns found: {summary_df.columns.tolist()}"
             )
-
-        accessions = {
-            str(acc).strip()
-            for acc in summary_df["Assembly Accession"]
+        from_summary = {
+            str(acc).strip() for acc in summary_df["Assembly Accession"]
             if pd.notna(acc) and str(acc).strip()
         }
-
-        # ------------------------------------------------------------
-        # Add manually specified genomes
-        # ------------------------------------------------------------
-
-        manual = {
-            str(acc).strip()
-            for acc in manual_accessions(wildcards.org)
-            if str(acc).strip()
-        }
-
-        accessions.update(manual)
-
-        print(f"Accessions from summary: {len(accessions - manual)}")
-        print(f"Manual accessions: {len(manual)}")
-
-        # ------------------------------------------------------------
-        # Update mode
-        #
-        # Keep genomes previously associated with this organism.
-        # ------------------------------------------------------------
-
+        from_link_list = read_lines(input.link_list)  # only non-empty in UPDATE_MODE
+        manual = {str(a).strip() for a in manual_accessions(wildcards.org) if str(a).strip()}
+        previous = set()
         if UPDATE_MODE and manifest.exists():
+            previous = read_lines(manifest)
 
-            previous = {
-                line.strip()
-                for line in manifest.read_text().splitlines()
-                if line.strip()
-            }
+        accessions = from_summary | from_link_list | manual | previous
 
-            accessions.update(previous)
+        log_msg(f"From summary: {len(from_summary)} | from link_list (results reused, UPDATE_MODE only): "
+                f"{len(from_link_list)} | manual: {len(manual)} | previously linked: {len(previous)}")
+        log_msg(f"Total accessions to link: {len(accessions)}")
 
-            print(
-                f"Previously associated accessions retained: "
-                f"{len(previous)}"
-            )
-
-        print(f"Total accessions to link: {len(accessions)}")
-
-        # ------------------------------------------------------------
-        # Remove existing contents of the run genome directory
-        # ------------------------------------------------------------
-
+        # ---- reset run genome dir ----
         for genome in genomes_dir.iterdir():
-
             if genome.is_symlink() or genome.is_file():
                 genome.unlink()
-
             elif genome.is_dir():
-                import shutil
                 shutil.rmtree(genome)
 
-        # ------------------------------------------------------------
-        # Link genomes
-        #
-        # IMPORTANT:
-        # Search recursively through STORE_DIR/genomes.
-        # ------------------------------------------------------------
-
-        linked = []
-        missing = []
-        duplicates = []
-
+        # ---- link each accession from the store ----
+        linked, missing, duplicates = [], [], []
         for acc in sorted(accessions):
-
-            matches = list(
-                store_dir.rglob(f"{acc}*.fna")
-            )
-
-            # --------------------------------------------------------
-            # Genome not found anywhere in the store
-            # --------------------------------------------------------
-
+            matches = list(store_dir.rglob(f"{acc}*.fna"))
             if not matches:
                 missing.append(acc)
                 continue
-
-            # --------------------------------------------------------
-            # Multiple copies found
-            # --------------------------------------------------------
-
             if len(matches) > 1:
-
-                duplicates.append(
-                    (acc, matches)
-                )
-
-                print(
-                    f"WARNING: Multiple genome files found for "
-                    f"{acc}:"
-                )
-
-                for match in matches:
-                    print(f"    {match}")
-
-            # --------------------------------------------------------
-            # Use the first matching genome
-            # --------------------------------------------------------
+                duplicates.append((acc, matches))
+                log_msg(f"WARNING: multiple genome files for {acc}: {[str(m) for m in matches]}")
 
             src = matches[0]
-
-            # Keep the canonical filename in the run directory
             dst = genomes_dir / src.name
-
-            # Remove an existing destination if necessary
             if dst.exists() or dst.is_symlink():
                 dst.unlink()
-
-            # Create absolute symlink
-            os.symlink(
-                src.resolve(),
-                dst
-            )
-
+            os.symlink(src.resolve(), dst)
             linked.append(acc)
+            log_msg(f"Linked: {acc} -> {dst} (from {src})")
 
-            print(
-                f"Linked: {acc}"
-                f"\n    {src}"
-                f"\n    -> {dst}"
-            )
+        manifest.write_text("\n".join(sorted(accessions)) + "\n")
 
-        # ------------------------------------------------------------
-        # Write manifest
-        #
-        # Keep the complete accession set, including genomes that were
-        # missing from the store.
-        # ------------------------------------------------------------
-
-        manifest.write_text(
-            "\n".join(sorted(accessions)) + "\n"
+        log_msg(
+            f"\n{'='*60}\nGenome linking summary\n{'='*60}\n"
+            f"Total requested: {len(accessions)} | Linked: {len(linked)} | "
+            f"Missing: {len(missing)} | Duplicates: {len(duplicates)}\n{'='*60}"
         )
-
-        # ------------------------------------------------------------
-        # Report
-        # ------------------------------------------------------------
-
-        print()
-        print("=" * 60)
-        print("Genome linking summary")
-        print("=" * 60)
-        print(f"Total requested : {len(accessions)}")
-        print(f"Linked          : {len(linked)}")
-        print(f"Missing         : {len(missing)}")
-        print(f"Duplicates      : {len(duplicates)}")
-        print("=" * 60)
-
         if missing:
+            log_msg("Missing genomes:\n" + "\n".join(f"  {a}" for a in missing))
 
-            print()
-            print("Missing genomes:")
+        Path(output.flag).write_text("done\n")
 
-            for acc in missing:
-                print(f"  {acc}")
-
-        # ------------------------------------------------------------
-        # Completion flag
-        # ------------------------------------------------------------
-
-        with open(output.flag, "w") as f:
-            f.write("done\n")
 
 
 # ---- NEW: single genome addition (feature 3) -------------------------------
@@ -732,7 +673,7 @@ rule add_manual_genome:
 
     Once in the store, `link_run_genomes` symlinks it into any org's run
     directory that lists it under `manual_genomes`, and it flows through
-    checkm2 / dereplication / gtdbtk / PGAP like any other genome.
+    checkm2 / dereplication / gtdbtk / CDS_pred like any other genome.
     """
     output:
         genome = f"{STORE_DIR}/genomes/{{accession}}.fna"
@@ -759,9 +700,21 @@ rule add_manual_genome:
         """
 
 
+
 rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see note)
-    input: 
-        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv"
+    input:
+        summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
+        # Formal note: this rule was reading Path(stage_dir(wildcards.org, "raw"))
+        # directly inside `run:` without declaring it as an input, so Snakemake's
+        # DAG had no edge forcing it to wait on link_run_genomes. Both rules only
+        # shared genomes_summary.tsv as a common ancestor, so they could be
+        # scheduled concurrently, and metadata_quality_report would sometimes
+        # execute before the genome symlinks existed, producing an empty/invalid
+        # report. Declaring the linked genome directory (or its completion flag)
+        # as an explicit input creates the missing dependency edge and guarantees
+        # correct ordering regardless of scheduling/parallelism.
+        genomes_dir=f"{RUN_DIR}/{{org}}/genomes",
+        link_flag=f"{RUN_DIR}/{{org}}/done.flag",
     output:
         quality_report = f"{RUN_DIR}/checkm2/{{org}}/quality_report_from_metadata.tsv"
     threads: 16
@@ -773,12 +726,19 @@ rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see no
         import pandas as pd
         Path(output.quality_report).parent.mkdir(parents=True, exist_ok=True)
         Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
-        
+
+        def log_msg(msg):
+            with open(log[0], "a") as f:
+                f.write(msg + "\n")
+
         metadata = pd.read_csv(input.summary, sep="\t", dtype=str)
-        Path(log[0]).write_text("These are the columns: \n" + "\n".join(metadata.columns.tolist()))
+        log_msg("Metadata_quality_report has started")
+        log_msg("These are the columns: \n" + "\n".join(metadata.columns.tolist()))
+
         accession_column = next((c for c in ("Assembly Accession", "accession", "genome", "user_genome") if c in metadata.columns), None)
         if not accession_column or not {"checkm2_completeness", "checkm2_contamination"}.issubset(metadata.columns):
             raise ValueError("GToTree metadata must contain accession, checkm2_completeness, and checkm2_contamination columns")
+
         metadata["Name"] = metadata[accession_column].map(normalize_accession)
         metadata["Assembly_Name"] = (
             metadata["Name"] + "_" + metadata.get("ncbi_assembly_name", "").fillna("") + "_genomic"
@@ -787,7 +747,7 @@ rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see no
             "Assembly_Name": metadata["Assembly_Name"],
             "Completeness": pd.to_numeric(metadata["checkm2_completeness"], errors="coerce"),
             "Contamination": pd.to_numeric(metadata["checkm2_contamination"], errors="coerce"),
-            "Completeness_Model_Used": metadata.get("checkm2_model","metadata"),
+            "Completeness_Model_Used": metadata.get("checkm2_model", "metadata"),
             "Translation_Table_Used": metadata.get("ncbi_translation_table", ""),
             "Coding_Density": pd.to_numeric(metadata.get("coding_density", ""), errors="coerce"),
             "Contig_N50": pd.to_numeric(metadata.get("n50_contigs", ""), errors="coerce"),
@@ -799,15 +759,21 @@ rule metadata_quality_report:   # (still a plain rule, not a checkpoint - see no
             "Name": metadata["Name"],
             "Max_Contig_Length": pd.to_numeric(metadata.get("longest_contig", ""), errors="coerce"),
         })
-        requested = {normalize_accession(p) for p in Path(stage_dir(wildcards.org, "raw")).glob("*.fna")}
-        Path(log[0]).write_text(f"Requested genomes: {', '.join(sorted(requested))}")
-        Path(log[0]).write_text(f"Report genomes: {', '.join(sorted(report['Assembly_Name']))}")
+
+        # Now reading through the declared `input.genomes_dir`, not a bare
+        # stage_dir() call, so this glob is guaranteed to run after linking.
+        requested = {normalize_accession(p) for p in Path(input.genomes_dir).glob("*.fna")}
+        log_msg(f"Requested genomes: {', '.join(sorted(requested))}")
+        log_msg(f"Report genomes: {', '.join(sorted(report['Assembly_Name']))}")
+
         report = report[report["Assembly_Name"].isin(requested)]
         missing = requested - set(report["Assembly_Name"])
         if missing:
             raise ValueError(f"GToTree metadata has no quality data for: {', '.join(sorted(missing))}")
+
         report.to_csv(output.quality_report, sep="\t", index=False)
-        Path(log[0]).write_text(f"Reused CheckM2 estimates for {len(report)} genomes from GToTree metadata.\n")
+        log_msg(f"Reused CheckM2 estimates for {len(report)} genomes from GToTree metadata.")
+
 
 
 rule checkm2:
@@ -1602,7 +1568,7 @@ rule taxa_counts_gtt:
             -o {output.plot} > {log} 2>&1
         """
 
-# helper functions to get the PGAP, interproscan and collation output for all genomes
+# helper functions to get the CDS_pred, interproscan and collation output for all genomes
 def _get_filtered_genome_list(org):
     if GTOTREE_MODE:
         csv_path = checkpoints.taxonomy_from_metadata.get(org=org).output[0]
@@ -1617,85 +1583,104 @@ def _get_filtered_genome_list(org):
 
 def filtered_genomes_for_org(wildcards):
     genomes = _get_filtered_genome_list(wildcards.org)
-    return expand(f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
+    return expand(f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
                   org=wildcards.org, genome=genomes)
 
 def filtered_faa_for_org(wildcards):
     genomes = _get_filtered_genome_list(wildcards.org)
-    return expand(f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+    return expand(f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
                   org=wildcards.org, genome=genomes)
 
 def filtered_tsv_for_org(wildcards):
     genomes = _get_filtered_genome_list(wildcards.org)
-    return expand(f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv",
+    return expand(f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv",
                   org=wildcards.org, genome=genomes)
 
 
 def get_interpro_files(wildcards):
     return expand(
-        f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
+        f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv",
         org=wildcards.org,
         genome=_get_filtered_genome_list(wildcards)
     )
 
 
-# 
+# rule run_pgap:
+#     # THIS REQUIRES GENUS LEVEL NAMES. NOT SUITABLE FOR OUR PIPELINE
+#     # PGAP.py has its own CLI, entirely unlike Prokka/Bakta:
+#     #   - genome is passed via -g, not as a bare positional path
+#     #   - -s ORGANISM is required in this simple mode (was missing)
+#     #   - core count is -c, there is no --threads flag
+#     #   - the output dir (-o) must NOT already exist, or PGAP exits with
+#     #     "Output directory ... exists, exiting." -- so no mkdir -p on it
+#     input:
+#         genome = f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
+#     output:
+#         fasta = f"{CDS_pred_outdir}/{{org}}/{{genome}}/{{genome}}.faa",
+#         tsv = f"{CDS_pred_outdir}/{{org}}/{{genome}}/{{genome}}.tsv"
+#     params:
+#         outdir = f"{CDS_pred_outdir}/{{org}}/{{genome}}",
+#         prefix = "{genome}",
+#         pgap_script = config.get("cds", {}).get("pgap_script", ""),
+#         # PGAP needs a genus/species name (not a raw genome path) to pick its
+#         # gene-calling model and genetic code; wire this to wherever GTDB-Tk
+#         # classification is stored for this genome.
+#         organism  = "{org}"
+#     threads: 4
+#     conda:
+#         f"{config['run'].get('env_dir')}/Reg.yaml"
+#     log:
+#         f"{LOG_DIR}/pgap/{{org}}/{{genome}}.log"
+#     shell:
+#         """
+#         mkdir -p $(dirname {log})
 
-rule pgap:
+
+#         rm -rf {params.outdir}
+
+
+
+#         python {params.pgap_script} \
+#             -r \
+#             -c {threads} \
+#             -o {params.outdir} \
+#             -g {input.genome} \
+#             -s '{params.organism}' \
+#             --prefix {params.prefix} \
+#             > {log} 2>&1
+#         """
+
+
+
+
+rule bakta:
     input:
         genome =  f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
     output:
-        fasta = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
-        tsv = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
+        fasta = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+        tsv = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
     params:
-        outdir = f"{PGAP_OUTDIR}/{{org}}/{{genome}}",
-        prefix   = "{genome}"
+        outdir = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}",
+        prefix   = "{genome}",
+        bakta_db = config.get("cds", {}).get("bakta_db", "")
     threads: 4
     conda:
-        f"{config['run'].get('env_dir')}/pgap.yaml"
+        f"{config['run'].get('env_dir')}/bakta.yaml"
     log:
-        f"{LOG_DIR}/pgap/{{org}}/{{genome}}.log"
+        f"{LOG_DIR}/bakta/{{org}}/{{genome}}.log"
     shell:
         """
         mkdir -p {params.outdir}
         mkdir -p $(dirname {log})
 
-        pgap.py \
-            -r \
-            -o {params.outdir} \
+        bakta \
+            --db {params.bakta_db} \
+            --output {params.outdir} \
             --prefix {params.prefix} \
             --threads {threads} \
+            --force \
             {input.genome} > {log} 2>&1
         """
-
-# rule bakta:
-#     input:
-#         genome =  f"{RUN_DIR}/skder/{{org}}/Dereplicated_Representative_Genomes/{{genome}}.fna"
-#     output:
-#         fasta = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
-#         tsv = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.tsv"
-#     params:
-#         outdir = f"{PGAP_OUTDIR}/{{org}}/{{genome}}",
-#         prefix   = "{genome}",
-#         bakta_db = config.get("cds", {}).get("bakta_db", "")
-#     threads: 4
-#     conda:
-#         f"{config['run'].get('env_dir')}/bakta.yaml"
-#     log:
-#         f"{LOG_DIR}/bakta/{{org}}/{{genome}}.log"
-#     shell:
-#         """
-#         mkdir -p {params.outdir}
-#         mkdir -p $(dirname {log})
-
-#         bakta \
-#             --db {params.bakta_db} \
-#             --output {params.outdir} \
-#             --prefix {params.prefix} \
-#             --threads {threads} \
-#             --force \
-#             {input.genome} > {log} 2>&1
-#         """
 
 
 
@@ -1704,12 +1689,12 @@ rule pgap:
 
 rule interproscan:
     input:
-        faa = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
+        faa = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}.faa",
     output:
-        tsv = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
+        tsv = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains.tsv"
     params:
-        base  = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains",
-        clean = f"{PGAP_OUTDIR}/{{org}}/{{genome}}/{{genome}}_clean.faa"
+        base  = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}_domains",
+        clean = f"{CDS_pred_OUTDIR}/{{org}}/{{genome}}/{{genome}}_clean.faa"
     threads: 16
     resources:
         mem_mb = 30000
@@ -2038,7 +2023,7 @@ rule make_protein_csv:
             with open(tsv_file) as f:
                 first = next(f)
 
-            if "PGAP" in first:
+            if "CDS_pred" in first:
                 df = pd.read_csv(tsv_file, sep="\t", skiprows=6, header=None)
                 df.columns = [
                     "Sequence Id",
@@ -2055,7 +2040,7 @@ rule make_protein_csv:
                 df = pd.read_csv(tsv_file, sep="\t")
 
             # ---------------------------------------------------------
-            # PGAP
+            # CDS_pred
             # ---------------------------------------------------------
             if "Locus Tag" in df.columns:
 

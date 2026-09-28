@@ -176,20 +176,20 @@ echo ""
 # -------------------------------
 
 
-echo "🧩 Generating DAG..."
+# echo "🧩 Generating DAG..."
 
-snakemake \
-  --snakefile "$SNAKEFILE" \
-  --configfile "$CONFIG_FILE" \
-  --config pipeline_log="$LOG_FILE" \
-  --use-conda \
-  --dag > "$DAG_DOT"
+# snakemake \
+#   --snakefile "$SNAKEFILE" \
+#   --configfile "$CONFIG_FILE" \
+#   --config pipeline_log="$LOG_FILE" \
+#   --use-conda \
+#   --dag > "$DAG_DOT"
 
-dot -Tsvg "$DAG_DOT" > "$DAG_SVG"
+# dot -Tsvg "$DAG_DOT" > "$DAG_SVG"
 
-echo "✅ DAG saved to:"
-echo "   DOT: $DAG_DOT"
-echo "   SVG: $DAG_SVG"
+# echo "✅ DAG saved to:"
+# echo "   DOT: $DAG_DOT"
+# echo "   SVG: $DAG_SVG"
 
 # -------------------------------
 # Run Snakemake
