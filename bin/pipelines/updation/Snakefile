@@ -330,6 +330,8 @@ if GTOTREE_MODE:
 
             metadata.drop(columns=["accession"], inplace=True)
 
+            metadata['genome_file'] = metadata['Assembly Accession'] + "_" + metadata['ncbi_assembly_name'] + "_genomic.fna"
+
             # Write normalized metadata
             metadata.to_csv(
                 output.summary,
@@ -1153,345 +1155,18 @@ if GTOTREE_MODE:
         GTT mode only. Select taxonomy ranks from GTDB metadata
         and restrict to genomes surviving skder dereplication.
         """
-
         input:
             summary=f"{RUN_DIR}/{{org}}/genomes_summary.tsv",
             derep_list=f"{RUN_DIR}/skder/{{org}}/derep_genomes.txt"
-
         output:
             f"{RUN_DIR}/gtdbtk/{{org}}_gtdbtk_classification_split.ar53.csv"
-
         log:
             f"{LOG_DIR}/taxonomy_from_metadata/{{org}}.log"
-
         conda:
             f"{config['run'].get('env_dir')}/Reg.yaml"
-
-        run:
-            import os
-            import time
-            import traceback
-            from pathlib import Path
-            import contextlib
-
-            import pandas as pd
-
-            # --------------------------------------------------
-            # Logging setup
-            # --------------------------------------------------
-
-            Path(log[0]).parent.mkdir(parents=True, exist_ok=True)
-            Path(output[0]).parent.mkdir(parents=True, exist_ok=True)
-
-            def logmsg(message):
-                timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-                print(f"[{timestamp}] [taxonomy_from_metadata] {message}", flush=True)
-
-            with open(log[0], "w") as logfile:
-                with contextlib.redirect_stdout(logfile), \
-                contextlib.redirect_stderr(logfile):
-                    try:
-                    
-                        logmsg("=" * 80)
-                        logmsg(f"STARTING CHECKPOINT: taxonomy_from_metadata")
-                        logmsg(f"Wildcard org: {wildcards.org}")
-                        logmsg(f"Working directory: {Path.cwd()}")
-                        logmsg(f"Threads allocated: {threads}")
-
-                        # --------------------------------------------------
-                        # Input diagnostics
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("INPUT FILES")
-
-                        for label, filepath in [
-                            ("summary", input.summary),
-                            ("derep_list", input.derep_list),
-                        ]:
-                            p = Path(filepath)
-
-                            logmsg(f"{label}: {p}")
-                            logmsg(f"  Exists: {p.exists()}")
-
-                            if p.exists():
-                                stat = p.stat()
-                                logmsg(f"  Size: {stat.st_size:,} bytes")
-                                logmsg(f"  Modified: {time.ctime(stat.st_mtime)}")
-
-                        summary_path = Path(input.summary)
-                        derep_path = Path(input.derep_list)
-
-                        if not summary_path.exists():
-                            raise FileNotFoundError(
-                                f"Metadata summary does not exist: {summary_path}"
-                            )
-
-                        if not derep_path.exists():
-                            raise FileNotFoundError(
-                                f"Dereplication list does not exist: {derep_path}"
-                            )
-
-                        # --------------------------------------------------
-                        # Read metadata
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("READING GTDB METADATA")
-
-                        logmsg(f"Reading: {summary_path}")
-
-                        df = pd.read_csv(
-                            summary_path,
-                            sep="\t",
-                            dtype=str,
-                        )
-
-                        logmsg(f"Metadata shape: {df.shape}")
-                        logmsg(f"Metadata rows: {len(df):,}")
-                        logmsg(f"Metadata columns ({len(df.columns)}):")
-
-                        for i, column in enumerate(df.columns, start=1):
-                            logmsg(f"  {i:03d}. {column!r}")
-
-                        logmsg(f"First 5 rows:\n{df.head().to_string()}")
-
-                        # --------------------------------------------------
-                        # Identify accession column
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("IDENTIFYING GENOME ACCESSION COLUMN")
-
-                        accession_candidates = (
-                            "Assembly Accession",
-                            "accession",
-                            "genome",
-                            "user_genome",
-                        )
-
-                        logmsg(f"Candidates: {accession_candidates}")
-
-                        genome_col = pick_column(
-                            df,
-                            accession_candidates,
-                            "genome accession",
-                        )
-
-                        logmsg(f"Selected accession column: {genome_col!r}")
-
-                        logmsg("First 10 raw accessions:")
-
-                        for value in df[genome_col].head(10):
-                            logmsg(f"  {value!r}")
-
-                        # --------------------------------------------------
-                        # Validate taxonomy columns
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("VALIDATING TAXONOMY RANKS")
-
-                        ranks = [
-                            "domain",
-                            "phylum",
-                            "class",
-                            "order",
-                            "family",
-                            "genus",
-                            "species",
-                        ]
-
-                        logmsg(f"Required ranks: {ranks}")
-
-                        missing_ranks = [
-                            rank for rank in ranks
-                            if rank not in df.columns
-                        ]
-
-                        if missing_ranks:
-                            logmsg(f"Missing taxonomy ranks: {missing_ranks}")
-                            logmsg(f"Available columns: {df.columns.tolist()}")
-
-                            raise ValueError(
-                                f"GTDB metadata is missing rank columns: "
-                                f"{missing_ranks}. "
-                                f"Columns found: {df.columns.tolist()}"
-                            )
-
-                        logmsg("All required taxonomy ranks are present.")
-
-                        for rank in ranks:
-                            n_missing = df[rank].isna().sum()
-                            n_unique = df[rank].nunique(dropna=True)
-
-                            logmsg(
-                                f"{rank}: "
-                                f"unique={n_unique:,}, "
-                                f"missing={n_missing:,}"
-                            )
-
-                        # --------------------------------------------------
-                        # Normalize accession identifiers
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("NORMALIZING ACCESSIONS")
-
-                        df["user_genome"] = df[genome_col].map(
-                            normalize_accession
-                        )
-
-                        df["user_genome"] = df["user_genome"] + "_" + df.get("ncbi_assembly_name", "").fillna("") + "_genomic"
-
-                        logmsg("First 10 normalized accessions:")
-
-                        for raw, normalized in zip(
-                            df[genome_col].head(10),
-                            df["user_genome"].head(10),
-                        ):
-                            logmsg(f"  {raw!r} -> {normalized!r}")
-
-                        n_null_accessions = df["user_genome"].isna().sum()
-
-                        logmsg(
-                            f"Null normalized accessions: "
-                            f"{n_null_accessions:,}"
-                        )
-
-                        logmsg(
-                            f"Unique normalized accessions: "
-                            f"{df['user_genome'].nunique():,}"
-                        )
-
-                        # --------------------------------------------------
-                        # Read dereplication list
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("READING DEREPLICATION LIST")
-
-                        derep_lines = derep_path.read_text().splitlines()
-
-                        logmsg(f"Raw lines in derep list: {len(derep_lines):,}")
-
-                        derep = {
-                            line.strip()
-                            for line in derep_lines
-                            if line.strip()
-                        }
-
-                        logmsg(f"Unique dereplicated genomes: {len(derep):,}")
-
-                        logmsg("First 10 dereplicated identifiers:")
-
-                        for genome in sorted(derep)[:10]:
-                            logmsg(f"  {genome!r}")
-
-                        # --------------------------------------------------
-                        # Compare identifiers before filtering
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("COMPARING METADATA AND DEREP IDENTIFIERS")
-
-                        metadata_ids = set(df["user_genome"].dropna())
-
-                        matched = metadata_ids & derep
-                        missing_from_metadata = derep - metadata_ids
-                        not_dereplicated = metadata_ids - derep
-
-                        logmsg(f"Metadata unique IDs: {len(metadata_ids):,}")
-                        logmsg(f"Derep unique IDs: {len(derep):,}")
-                        logmsg(f"Matched IDs: {len(matched):,}")
-
-                        logmsg(
-                            f"Derep IDs absent from metadata: "
-                            f"{len(missing_from_metadata):,}"
-                        )
-
-                        logmsg(
-                            f"Metadata IDs not in derep list: "
-                            f"{len(not_dereplicated):,}"
-                        )
-
-                        if missing_from_metadata:
-                            logmsg("First 20 derep IDs absent from metadata:")
-
-                            for genome in sorted(missing_from_metadata)[:20]:
-                                logmsg(f"  {genome!r}")
-
-                        if not_dereplicated:
-                            logmsg("First 20 metadata IDs not dereplicated:")
-
-                            for genome in sorted(not_dereplicated)[:20]:
-                                logmsg(f"  {genome!r}")
-
-                        # --------------------------------------------------
-                        # Filter to dereplicated genomes
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("FILTERING METADATA TO DEREPLICATED GENOMES")
-
-                        rows_before = len(df)
-
-                        df = df[df["user_genome"].isin(derep)].copy()
-
-                        rows_after = len(df)
-
-                        logmsg(f"Rows before filtering: {rows_before:,}")
-                        logmsg(f"Rows after filtering: {rows_after:,}")
-                        logmsg(f"Rows removed: {rows_before - rows_after:,}")
-
-                        logmsg(
-                            f"Unique genomes after filtering: "
-                            f"{df['user_genome'].nunique():,}"
-                        )
-
-                        if df.empty:
-                            logmsg("WARNING: No genomes remain after filtering!")
-
-                        # --------------------------------------------------
-                        # Output diagnostics and writing
-                        # --------------------------------------------------
-
-                        logmsg("-" * 80)
-                        logmsg("WRITING OUTPUT")
-
-                        out_path = Path(output[0])
-
-                        logmsg(f"Output path: {out_path}")
-                        logmsg(f"Output directory exists: {out_path.parent.exists()}")
-
-                        logmsg(f"Output columns: {df.columns.tolist()}")
-
-                        df.to_csv(
-                            out_path,
-                            index=False,
-                        )
-
-                        logmsg("Output written successfully.")
-
-                        if out_path.exists():
-                            stat = out_path.stat()
-
-                            logmsg(f"Output size: {stat.st_size:,} bytes")
-                            logmsg(f"Output modified: {time.ctime(stat.st_mtime)}")
-
-                            check = pd.read_csv(out_path, dtype=str)
-
-                            logmsg(f"Output read-back shape: {check.shape}")
-                            logmsg(f"Output columns: {check.columns.tolist()}")
-
-                        logmsg("CHECKPOINT COMPLETED SUCCESSFULLY")
-                        logmsg("=" * 80)
-
-                    except Exception:
-                        logmsg("CHECKPOINT FAILED")
-                        logmsg(traceback.format_exc())
-                        raise
-
+        threads: 1
+        script:
+            "../../units/taxonomy_from_metadata.py"  # path is relative to this Snakefile; adjust as needed
                 
 else:
 
@@ -1819,8 +1494,8 @@ if UPDATE_MODE:
 
     rule update_master_gtdbtk:
         """
-        Same idea as update_master_checkm2, but for GTDB-Tk taxonomic
-        classifications, keyed by `user_genome`.
+        Update master GTDB-Tk taxonomic classifications,
+        keyed by `user_genome`.
         """
         input:
             taxonomy = expand(
@@ -1828,26 +1503,27 @@ if UPDATE_MODE:
                 org=ORGS
             )
         output:
-            master = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv"
-        run:
-            import pandas as pd
-            import os
+            master = f"{MASTER_DIR}/gtdbtk_classification.ar53.csv",
+            done_updating = f"{RUN_DIR}/gtdbtk_update_done.flag"
 
-            new_df = pd.concat(
-                [pd.read_csv(f) for f in input.taxonomy],
-                ignore_index=True
-            )
+        params:
+            is_update_mode = UPDATE_MODE
 
-            os.makedirs(MASTER_DIR, exist_ok=True)
+        log:
+            f"{LOG_DIR}/update_master_gtdbtk/done.log"
 
-            if UPDATE_MODE and os.path.exists(output.master):
-                old_df = pd.read_csv(output.master)
-                combined = pd.concat([old_df, new_df], ignore_index=True)
-            else:
-                combined = new_df
+        shell:
+            """
+            set -euo pipefail
+            
+            python {CURRENT_DIR}/bin/units/update_master_gtdbtk.py \
+                --taxonomy {input.taxonomy:q} \
+                --output-master {output.master:q} \
+                --log {log:q} \
+                --update-mode {params.is_update_mode} 
 
-            combined = combined.drop_duplicates(subset="user_genome", keep="last")
-            combined.to_csv(output.master, index=False)
+            touch {output.done_updating:q}
+            """
 
 else:
 
@@ -1909,81 +1585,19 @@ rule make_genome_csv:
     input:
         flag     = f"{RUN_DIR}/{{org}}/annotation_ready.flag",
         checkm2  = genome_csv_quality_source(),
-        taxonomy = genome_csv_taxonomy_source()
+        taxonomy = genome_csv_taxonomy_source(),
+        done_updating = f"{RUN_DIR}/gtdbtk_update_done.flag"
     output:
         filtered=f"{config['inputs']['out_genome_csv']}_{{org}}.csv",
         unfiltered=f"{config['inputs']['out_genome_csv_unfiltered']}_{{org}}.csv"
     params:
         completeness=config["checkm2"]["Completeness"],
         contamination=config["checkm2"]["Contamination"]
-    run:
-        import pandas as pd
 
-        checkm2 = pd.read_csv(input.checkm2, sep="\t")
-        taxonomy = pd.read_csv(input.taxonomy)
-
-        df = checkm2.merge(
-            taxonomy[
-                [
-                    "genome_file",
-                    "domain",
-                    "phylum",
-                    "class",
-                    "order",
-                    "family",
-                    "genus",
-                    "species",
-                ]
-            ],
-            left_on="Name",
-            right_on="genome_file",
-            how="left",
-        )
-
-        out = pd.DataFrame({
-            "Organism Name": "",
-            "Organism Infraspecific Names Strain": "",
-            "Organism Infraspecific Names Isolate": "",
-            "Annotation Name": "",
-            "Assembly Level": "",
-            "Assembly Release Date": "",
-            "WGS project accession": "",
-            "Assembly Stats Number of Scaffolds": "",
-            "genome_file": df["genome_file"],
-            "Completeness": df["Completeness"],
-            "Contamination": df["Contamination"],
-            "Completeness_Model_Used": df["Completeness_Model_Used"],
-            "Translation_Table_Used": df["Translation_Table_Used"],
-            "Coding_Density": df["Coding_Density"],
-            "Contig_N50": df["Contig_N50"],
-            "Average_Gene_Length": df["Average_Gene_Length"],
-            "Genome_Size": df["Genome_Size"],
-            "GC_Content": df["GC_Content"],
-            "Total_Coding_Sequences": df["Total_Coding_Sequences"],
-            "Total_Contigs": df["Total_Contigs"],
-            "Max_Contig_Length": df["Max_Contig_Length"],
-            "batch_date": "",
-            "Isolate": "",
-            "WGS Project Accession": "",
-            "domain": df["domain"],
-            "phylum": df["phylum"],
-            "class": df["class"],
-            "order": df["order"],
-            "family": df["family"],
-            "genus": df["genus"],
-            "species": df["species"],
-        })
-
-        # Write unfiltered table
-        out.to_csv(output.unfiltered, index=False)
-
-        # Apply CheckM2 thresholds
-        filtered = out[
-            (out["Completeness"] >= params.completeness)
-            & (out["Contamination"] <= params.contamination)
-        ]
-
-        filtered.to_csv(output.filtered, index=False)
+    log:
+        f"{LOG_DIR}/make_genome_csv/{{org}}.log"
+    script:
+        "../../units/make_genome_csv.py"
 
 
 
@@ -1995,126 +1609,8 @@ rule make_protein_csv:
     output:
         f"{config['inputs']['out_protein_csv']}_{{org}}.csv"
 
-    run:
-        import pandas as pd
-        from pathlib import Path
-        from Bio import SeqIO
+    log:
+        f"{LOG_DIR}/make_protein_csv/{{org}}.log"
 
-        dfs = []
-
-        for tsv_file, faa_file in zip(input.genomes, input.fastas):
-
-            genome = Path(tsv_file).stem.replace(".tsv", "")
-
-            # ---------------------------------------------------------
-            # Parse FASTA once
-            # ---------------------------------------------------------
-            protein_info = {
-                rec.id.split()[0]: {
-                    "protein_length": len(rec.seq),
-                    "protein_header": rec.description,
-                }
-                for rec in SeqIO.parse(faa_file, "fasta")
-            }
-
-            # ---------------------------------------------------------
-            # Read annotation table
-            # ---------------------------------------------------------
-            with open(tsv_file) as f:
-                first = next(f)
-
-            if "CDS_pred" in first:
-                df = pd.read_csv(tsv_file, sep="\t", skiprows=6, header=None)
-                df.columns = [
-                    "Sequence Id",
-                    "Type",
-                    "Start",
-                    "Stop",
-                    "Strand",
-                    "Locus Tag",
-                    "Gene",
-                    "Product",
-                    "DbXrefs",
-                ]
-            else:
-                df = pd.read_csv(tsv_file, sep="\t")
-
-            # ---------------------------------------------------------
-            # CDS_pred
-            # ---------------------------------------------------------
-            if "Locus Tag" in df.columns:
-
-                df = df.rename(columns={
-                    "Locus Tag": "locus_tag",
-                    "Type": "ftype",
-                    "Gene": "gene",
-                    "Product": "product",
-                })
-
-                df["length_bp"] = (df["Stop"] - df["Start"] + 1).abs()
-
-                df["EC_number"] = ""
-                df["COG"] = ""
-
-            # ---------------------------------------------------------
-            # Prokka
-            # ---------------------------------------------------------
-            elif "locus_tag" in df.columns:
-
-                if "length_bp" not in df.columns:
-                    df["length_bp"] = (df["end"] - df["start"] + 1).abs()
-
-                if "ftype" not in df.columns:
-                    if "type" in df.columns:
-                        df["ftype"] = df["type"]
-                    else:
-                        df["ftype"] = ""
-
-                if "gene" not in df.columns:
-                    df["gene"] = ""
-
-                if "product" not in df.columns:
-                    df["product"] = ""
-
-                if "EC_number" not in df.columns:
-                    df["EC_number"] = ""
-
-                if "COG" not in df.columns:
-                    df["COG"] = ""
-
-            else:
-                raise ValueError(
-                    f"Could not determine annotation format for {tsv_file}\n"
-                    f"Columns found: {list(df.columns)}"
-                )
-
-            # ---------------------------------------------------------
-            # Add protein information from FASTA
-            # ---------------------------------------------------------
-            df["protein_length"] = df["locus_tag"].map(
-                lambda x: protein_info.get(x, {}).get("protein_length")
-            )
-
-            df["protein_header"] = df["locus_tag"].map(
-                lambda x: protein_info.get(x, {}).get("protein_header")
-            )
-
-            out = pd.DataFrame({
-                "locus_tag": df["locus_tag"],
-                "genome_file": genome,
-                "protein_length": df["protein_length"],
-                "protein_header": df["protein_header"],
-                "ftype": df["ftype"],
-                "length_bp": df["length_bp"],
-                "gene": df["gene"],
-                "EC_number": df["EC_number"],
-                "COG": df["COG"],
-                "product": df["product"],
-                "predicted_structure": "",
-                "IPS": "",
-                "Manual_annotation": "",
-            })
-
-            dfs.append(out)
-
-        pd.concat(dfs, ignore_index=True).to_csv(output[0], index=False)
+    script:
+        "../../units/make_protein_csv.py"

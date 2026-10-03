@@ -12,11 +12,11 @@ run:
 
 
 inputs:
-  out_fasta: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/fasta/v2_cp85_con10"
-  out_genome_csv_unfiltered: "/home/anirudh/asgard_pipeline/database/collated/version2/genome_file/v2_unfitered"
-  out_genome_csv: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/genome_file/v2_cp85_con10_gf"
-  out_protein_csv: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/protein_file/v2_cp85_con10_pf"
-  out_ips_parquet: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/ips/v2_cp85_con10_ips"
+  out_fasta: "/home/anirudh/asgard_pipeline/database/collated/version3/filtered/85comp10con/fasta/v3_cp85_con10"
+  out_genome_csv_unfiltered: "/home/anirudh/asgard_pipeline/database/collated/version3/genome_file/v3_unfitered"
+  out_genome_csv: "/home/anirudh/asgard_pipeline/database/collated/version3/filtered/85comp10con/genome_file/v3_cp85_con10_gf"
+  out_protein_csv: "/home/anirudh/asgard_pipeline/database/collated/version3/filtered/85comp10con/protein_file/v3_cp85_con10_pf"
+  out_ips_parquet: "/home/anirudh/asgard_pipeline/database/collated/version3/filtered/85comp10con/ips/v3_cp85_con10_ips"
   # manual_genomes:
   #   hc1:
   #     - accession: GCA_055385335.1
