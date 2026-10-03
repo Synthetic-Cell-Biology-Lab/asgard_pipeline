@@ -22,7 +22,7 @@ Defaults are used in the absence of the cut-offs
 """
 rule ssn_cdhit:
     input:
-        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.fasta",
     output:
         nr = f"{SSN_DIR}/{PROTEIN}.nr.fasta",
         clstr = f"{SSN_DIR}/{PROTEIN}.nr.fasta.clstr",
@@ -200,7 +200,7 @@ creates the taxnomy csv for the annotation in cytoscape
 rule ssn_annotate:
     input:
         nodes = f"{SSN_DIR}/{PROTEIN}.nodes.tsv",
-        csv   = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
+        csv   = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv",
     output:
         taxonomy = f"{SSN_DIR}/{PROTEIN}.tax.tsv",
     params:

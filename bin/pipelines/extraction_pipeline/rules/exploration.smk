@@ -15,11 +15,180 @@ def get_final_tree(wc):
     else:
         return f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile"
 
+rule filter_fasta_by_length:
+    input:
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta",
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+
+    output:
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.fasta",
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv"
+
+    log:
+        f"{LOG_DIR}/filter_fasta_by_length.log"
+
+    conda:
+        f"{ENV_DIR}/Reg.yaml"
+
+    params:
+        min_length = config.get("plot", {}).get("ymin", 0),
+        max_length = config.get("plot", {}).get("ymax", 1000000)
+
+    message:
+        """
+        ==========================================
+        📊      Filter FASTA and CSV by Length
+        ==========================================
+        """
+
+    run:
+        import pandas as pd
+        from Bio import SeqIO
+        from datetime import datetime
+
+        # ---------------------------------------------------------
+        # Read FASTA and calculate sequence lengths
+        # ---------------------------------------------------------
+
+        records = list(SeqIO.parse(input.fasta, "fasta"))
+
+        sequence_lengths = {
+            record.id: len(record.seq)
+            for record in records
+        }
+
+        # ---------------------------------------------------------
+        # Filter FASTA by length
+        # ---------------------------------------------------------
+
+        filtered_records = [
+            record
+            for record in records
+            if params.min_length <= len(record.seq) <= params.max_length
+        ]
+
+        filtered_ids = {
+            record.id
+            for record in filtered_records
+        }
+
+        # ---------------------------------------------------------
+        # Read CSV
+        # ---------------------------------------------------------
+
+        df = pd.read_csv(input.csv)
+
+        # ---------------------------------------------------------
+        # Populate sequence length from FASTA
+        # ---------------------------------------------------------
+
+        df["length"] = (
+            df["locus_tag"]
+            .astype(str)
+            .map(sequence_lengths)
+        )
+
+        # ---------------------------------------------------------
+        # Filter CSV using FASTA-derived lengths
+        # ---------------------------------------------------------
+
+        df_filtered = df[
+            (df["length"] >= params.min_length) &
+            (df["length"] <= params.max_length)
+        ].copy()
+
+        # ---------------------------------------------------------
+        # Write filtered FASTA
+        # ---------------------------------------------------------
+
+        SeqIO.write(
+            filtered_records,
+            output.fasta,
+            "fasta"
+        )
+
+        # ---------------------------------------------------------
+        # Write filtered CSV
+        # ---------------------------------------------------------
+
+        df_filtered.to_csv(
+            output.csv,
+            index=False
+        )
+
+        # ---------------------------------------------------------
+        # Logging
+        # ---------------------------------------------------------
+
+        with open(log[0], "w") as logfile:
+
+            logfile.write("=" * 60 + "\n")
+            logfile.write("Filter FASTA and CSV by Protein Length\n")
+            logfile.write("=" * 60 + "\n")
+            logfile.write(
+                f"Timestamp: "
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            )
+
+            logfile.write(f"Input FASTA:  {input.fasta}\n")
+            logfile.write(f"Input CSV:    {input.csv}\n")
+            logfile.write(f"Output FASTA: {output.fasta}\n")
+            logfile.write(f"Output CSV:   {output.csv}\n\n")
+
+            logfile.write(
+                f"Minimum length: {params.min_length}\n"
+            )
+            logfile.write(
+                f"Maximum length: {params.max_length}\n\n"
+            )
+
+            logfile.write(
+                f"Input FASTA sequences: "
+                f"{len(records)}\n"
+            )
+
+            logfile.write(
+                f"Retained FASTA sequences: "
+                f"{len(filtered_records)}\n"
+            )
+
+            logfile.write(
+                f"Removed FASTA sequences: "
+                f"{len(records) - len(filtered_records)}\n\n"
+            )
+
+            logfile.write(
+                f"Input CSV rows: "
+                f"{len(df)}\n"
+            )
+
+            logfile.write(
+                f"Retained CSV rows: "
+                f"{len(df_filtered)}\n"
+            )
+
+            logfile.write(
+                f"Removed CSV rows: "
+                f"{len(df) - len(df_filtered)}\n"
+            )
+
+            missing_lengths = df["length"].isna().sum()
+
+            logfile.write(
+                f"\nCSV IDs missing from FASTA: "
+                f"{missing_lengths}\n"
+            )
+
+            logfile.write("\n")
+            logfile.write("=" * 60 + "\n")
+            logfile.write("Filtering completed successfully\n")
+            logfile.write("=" * 60 + "\n")
+
 
 # gives a length analysis of the protein set
 rule length_histogram:
     input:
-        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.fasta"
     output:
         plot = f"{EXPLORATION_DIR}/{PROTEIN}_length_hist.png",
         split_dir = directory(f"{EXPLORATION_DIR}/{PROTEIN}_length_bins")
@@ -44,7 +213,7 @@ rule length_histogram:
 # plots the counts of the genomes in different classes
 rule taxa_counts:
     input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv"
     output:
         plot = f"{EXPLORATION_DIR}/{PROTEIN}_taxa_count.svg",
     conda:
@@ -64,14 +233,13 @@ rule taxa_counts:
 
 
 
-
 ############################################
 # Exploratory FastTree
 ############################################
 
 rule exploratory_fasttree:
     input:
-        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.fasta"
     output:
         tree = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.treefile",
         msa = f"{EXPLORATION_DIR}/{PROTEIN}_unr_fasttree.aligned.fasta"
@@ -101,7 +269,7 @@ rule exploratory_fasttree:
 # generates color strips for headers of the protein sequences
 rule itol_colorstrip:
     input:
-        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta"
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.fasta"
     output:
         f"{EXPLORATION_DIR}/{PROTEIN}_colorstrip.txt"
     shell:
@@ -116,8 +284,8 @@ rule itol_colorstrip:
 # all the annotation files required for the visualization
 rule df_for_annotation:
     input: 
-        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.fasta", 
-        protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
+        fasta = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.fasta", 
+        protein_csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv",
         cluster_csv = f"{SSN_DIR}/{PROTEIN}.clusters.expanded.csv",
         domains = f"{EXPLORATION_DIR}/{PROTEIN}_domain_proteins.tsv"
     output:

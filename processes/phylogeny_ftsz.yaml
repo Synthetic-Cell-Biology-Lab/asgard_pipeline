@@ -1,6 +1,6 @@
 run:
-  id: ftsz_version2_run2
-  phyl_id: ftsz_run4
+  id: ftsz_version3_run2
+  phyl_id: ftsz_run1
   protein_name: ftsz
   pipeline: phylogeny_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
@@ -39,7 +39,7 @@ inputs:
   fasta_file: "/home/anirudh/asgard_pipeline/database/collated/version2/filtered/85comp10con/fasta/v2_cp85_con10.fasta"
 modes:
   parse_ips:
-    enabled: True
+    enabled: false
     remove_hypotheticals: false
     search:
       search_string: ftsz
@@ -53,9 +53,9 @@ modes:
     - PF20259 # tRNA methyl transferase
     - IPR011033 # like superfamily
   from_manual:
-    enabled: false        
+    enabled: True        
     manual_annotation_filter:
-    - cdpb
+    - ftsz
   from_fasta_csv: 
     enabled: false
 
@@ -64,14 +64,14 @@ plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - cdpb
+  - ftsz
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - cdpb
+  - ftsz
 
 
   ymin: 0

@@ -164,7 +164,7 @@ rule link_log_file:
 
 rule protein_copy_heatmap_unreviewed:
     input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv"
 
     output:
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/copy_heatmap_{{level}}.unr.svg"
@@ -196,7 +196,7 @@ rule protein_copy_heatmap_unreviewed:
 
 rule protein_coencoding_heatmap_unreviewed:
     input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv"
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv"
 
     output:
         abso  = f"{EXPLORATION_DIR}/plots/{PROTEIN}/coencoding_abs.unr.svg",
@@ -223,7 +223,7 @@ rule protein_coencoding_heatmap_unreviewed:
 
 rule plot_taxa:
     input:
-        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.csv",
+        csv = f"{EXPLORATION_DIR}/{PROTEIN}.unr.filtered.csv",
 
     output:
         f"{EXPLORATION_DIR}/plots/{PROTEIN}/protein_length_vs_{{level}}.svg"

@@ -1,18 +1,18 @@
 run:
-  id: ftsz_version3_run2
-  protein_name: ftsz
+  id: sepf_v3_rum1
+  protein_name: SepF
   pipeline: extraction_pipeline
   base_dir: "/home/anirudh/asgard_pipeline"
   env_dir: "/home/anirudh/asgard_pipeline/bin/envs"
   log_dir: "/home/anirudh/asgard_pipeline/logs/pipeline_logs/"
-  reason: extracting tubulin homologs in asgardarchaeaota; updated with gtt
+  reason: To find sepf proteins in asgard
   cores: 24
   taxon_level: phylum
   taxon_filter: Asgardarchaeota
   LOCUS_TAG: locus_tag
 SSN:
   RUN_SSN: True
-  copy_to_windows: true
+  copy_to_windows: True
   windows_path: "/mnt/e/ssn_outputs"
   SSN_BITSCORES:
   - 50
@@ -42,51 +42,41 @@ inputs:
 
 modes:
   parse_ips:
-    enabled: true
+    enabled: True
     remove_hypotheticals: false
     search:
-      search_string: ftsz
+      search_string: SepF
       rstring: 
   hmmsearch:
     enabled: false
     acc_groups:
-    - PF12327 # ftsz c terminal
+    - PF01541
   from_manual:
     enabled: false        
     manual_annotation_filter:
-    - ftsz
+    - SepF
   from_fasta_csv: 
     enabled: false
-  arcog:
-    enabled: false
-    search_terms:
-    - PRC-barrel
-    ids:
-    - "2155"
-    - "2157"
-    - "2158"
-    - "5740"
-    - "8023"
 
 
 plot:
   y_column: protein_length
   filter_column: Manual_annotation
   filter_values:
-  - ftsz
+  - SepF
   taxon_levels:
   - phylum
   - class
   - order
   
   proteins_presence:
-  - ftsz
+  - SepF
 
 
-  ymin: 300
-  ymax: 600
+  ymin: 0
+  ymax: 250
 phylogeny:
   threads: 12
-  run_itol_upload: true
+  run_itol_upload: True
   itol_project: Asgard
   madroot: false

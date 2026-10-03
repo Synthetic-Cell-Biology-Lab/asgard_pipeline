@@ -65,7 +65,7 @@ os.makedirs(LOG_DIR,    exist_ok=True)
 def get_align_fasta(wildcards):
     if config['phylogeny'].get("extend_phylogeny", {}).get("add_sequences", False):
         return f"{PARENT_DIR}/{PROTEIN}.final.nr.fasta"
-    return f"{PARENT_DIR}/{PROTEIN}.final.fasta"
+    return f"{RESULT_DIR}/{PROTEIN}.final.fasta"
 
 
 def get_additional_fastas(wildcards):
@@ -185,7 +185,7 @@ rule cdhit:
         cd-hit \
             -i {input.fasta} \
             -o {output.fasta} \
-            -c {params.cdhit_identity} \
+            -c {params.cd_hit_identity} \
             -n 5 \
             -M 16000 \
             -T {threads} \
@@ -374,7 +374,7 @@ rule msa_to_itol:
 
 rule table2itol:
     input:
-        annot = f"{PARENT_DIR}/{PROTEIN}.final.csv"
+        annot = f"{RESULT_DIR}/{PROTEIN}.final.csv"
     output:
         annotation_dir = directory(f"{RESULT_DIR}/annotation"),    
         done_annot = touch(f"{RESULT_DIR}/annotation.done.flag")
